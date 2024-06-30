@@ -1,23 +1,31 @@
 {
-  "name": "Template Project",
+  "name": "SP1111",
   "version": "",
   "home_assistant_domain": "esphome",
   "new_install_skip_erase": false,
   "builds": [
     {
-      "chipFamily": "ESP32",
+      "chipFamily": "ESP8266",
+      "ota": {
+        "path": "sp111v11-esp8266/sp111v11-esp8266.ota.bin",
+        "md5": "388c64d9a29f60d4e27301298c9a3b63"
+      },
       "parts": [
         {
-          "path": "project-template-esp32/project-template-esp32.bin",
+          "path": "sp111v11-esp8266/sp111v11-esp8266.factory.bin",
           "offset": 0
         }
       ]
     },
     {
       "chipFamily": "ESP8266",
+      "ota": {
+        "path": "sp111v14-esp8266/sp111v14-esp8266.ota.bin",
+        "md5": "386689511e6cc3daa8dc03420161e1d9"
+      },
       "parts": [
         {
-          "path": "project-template-esp8266/project-template-esp8266.bin",
+          "path": "sp111v14-esp8266/sp111v14-esp8266.factory.bin",
           "offset": 0
         }
       ]
