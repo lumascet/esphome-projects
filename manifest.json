@@ -1,5 +1,5 @@
 {
-  "name": "SP111 V1.1",
+  "name": "SP111 V1.4",
   "version": "",
   "home_assistant_domain": "esphome",
   "new_install_skip_erase": false,
@@ -7,12 +7,12 @@
     {
       "chipFamily": "ESP8266",
       "ota": {
-        "path": "sp111v11-esp8266/sp111v11-esp8266.ota.bin",
-        "md5": "abf5424495aaadae0c28954857eebeff"
+        "path": "sp111v14-esp8266/sp111v14-esp8266.ota.bin",
+        "md5": "139b4b6d7a36ada3574f41f5aae002f7"
       },
       "parts": [
         {
-          "path": "sp111v11-esp8266/sp111v11-esp8266.factory.bin",
+          "path": "sp111v14-esp8266/sp111v14-esp8266.factory.bin",
           "offset": 0
         }
       ]
