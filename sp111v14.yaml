@@ -1,17 +1,16 @@
 substitutions:
   name: sp111v14
   friendly_name: SP111 V1.4
+
+  current_zero: "0.14"
   # Higher value gives lower watt readout
-  current_res: "0.00117779"
+  current_res: "0.001125"
   # Lower value gives lower voltage readout
-  voltage_div: "2000.61"
-  current_measured: "0.510"
-  current_truth: "0.4263"
-  current_zero: "0.250" 
+  voltage_div: "2090"
 
 esphome:
-  name: $name
-  friendly_name: $friendly_name
+  name: ${name}
+  friendly_name: ${friendly_name}
   name_add_mac_suffix: True
 
   project:
@@ -20,34 +19,57 @@ esphome:
 
 esp8266:
   board: esp8285
-  #restore_from_flash: true
+  restore_from_flash: True
   early_pin_init: False #Prevent fast switch toggling on restart
-
-# Enable logging
+  
 logger:
   baud_rate: 0
 
-# Enable Home Assistant API
-api:  
-
 ota:
   - platform: esphome
-
-# Enable Home Assistant API
-wifi:
-
-  ap:
 
 captive_portal:
 
 dashboard_import:
   package_import_url: github://lumascet/esphome-projects/sp111v14.yaml@main
-  import_full_config: false # or true
+  import_full_config: false
 
-#preferences:
-#  flash_write_interval: 5min  # set to 5min to prevent wearing out the onboard flash module too quickly
+globals:
+  - id: voltage_raw
+    type: float
+    restore_value: False
+    initial_value: "0.0"
 
-# see: https://esphome.io/components/time.html
+  - id: current_raw
+    type: float
+    restore_value: False
+    initial_value: "0.0"
+
+  - id: power_raw
+    type: float
+    restore_value: False
+    initial_value: "0.0"
+
+  - id: voltage_cal
+    type: float
+    restore_value: True
+    initial_value: "1.0"
+    
+  - id: current_cal
+    type: float
+    restore_value: True
+    initial_value: "1.0"
+
+  - id: current_cal_zero
+    type: float
+    restore_value: True
+    initial_value: "${current_zero}"
+
+  - id: power_cal
+    type: float
+    restore_value: True
+    initial_value: "1.0"
+  
 time:
   - platform: homeassistant
     id: homeassistant_time
@@ -62,7 +84,6 @@ binary_sensor:
     name: "${friendly_name} Status"
     device_class: connectivity
 
-  # toggle relay on/off
   - platform: gpio
     name: "${friendly_name} Button"
     pin:
@@ -85,14 +106,14 @@ sensor:
 
   - platform: total_daily_energy
     name: "${friendly_name} Energy Today"
-    power_id: "power"
+    power_id: power_measured
     filters:
-      # Multiplication factor from W to kW is 0.001
       - multiply: 0.001
     unit_of_measurement: kWh
     icon: mdi:calendar-clock
 
   - platform: hlw8012
+    id: hlw
     model: BL0937
     sel_pin:
       number: GPIO12
@@ -106,27 +127,53 @@ sensor:
 
     current:
       name: "${friendly_name} Current"
+      id: current_measured
       unit_of_measurement: A
       accuracy_decimals: 3
       icon: mdi:current-ac
       filters:
-        - calibrate_linear:
-          - ${current_zero} -> 0.0
-          - ${current_measured} -> ${current_truth} 
+        - lambda: 
+            id(current_raw) = x;
+            return (x -  id(current_cal_zero)) * id(current_cal);
         - clamp:
             min_value: 0
 
     voltage:
       name: "${friendly_name} Voltage"
+      id: voltage_measured
       unit_of_measurement: V
       accuracy_decimals: 1
       icon: mdi:flash
+      filters:
+        - lambda: 
+            id(voltage_raw) = x;
+            return x * id(voltage_cal);
 
     power:
       name: "${friendly_name} Power"
+      id: power_measured
+      device_class: power
       unit_of_measurement: W
-      id: "power"
+      accuracy_decimals: 1
       icon: mdi:power-socket-eu
+      filters:
+        - lambda: 
+            id(power_raw) = x;
+            return x * id(voltage_cal) * id(current_cal) * id(power_cal);
+      on_value: 
+        then:
+          - lambda: 
+              if (id(current_measured).state != 0 && id(voltage_measured).state != 0) {
+                id(power_factor).publish_state(x / (id(current_measured).state * id(voltage_measured).state));
+              } else {
+                id(power_factor).publish_state(0);
+              }
+
+  - platform: template
+    name:  "${friendly_name} Power Factor"
+    id: power_factor
+    device_class: power_factor
+    accuracy_decimals: 2  
 
 status_led:
   pin:
@@ -157,3 +204,84 @@ switch:
   - platform: gpio
     pin: GPIO15
     id: relay
+
+number:
+  - platform: template
+    name: "1.1 Voltage Truth"
+    entity_category: config
+    id: voltage_truth
+    min_value: 200.0
+    max_value: 250.0
+    step: 0.01
+    initial_value: 230.0
+    restore_value: True
+    optimistic: True
+    device_class: voltage
+
+  - platform: template
+    name: "2.1 Current Truth"
+    entity_category: config
+    id: current_truth
+    min_value: 0.1
+    max_value: 16.0
+    step: 0.001
+    initial_value: 0.5
+    restore_value: True
+    optimistic: True
+    device_class: current
+
+  - platform: template
+    name: "3.1 Power Truth"
+    entity_category: config
+    id: power_truth
+    min_value: 0.0
+    max_value: 3600.0
+    step: 0.01
+    initial_value: 100.0
+    restore_value: True
+    optimistic: True
+    device_class: power
+
+button:
+  - platform: template
+    name: "1.2 Calibrate Voltage"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(voltage_cal) = id(voltage_truth).state / id(voltage_raw);
+
+  - platform: template
+    name: "2.2 Calibrate Current Zero"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(current_cal_zero) = id(current_raw);
+            
+  - platform: template
+    name: "2.3 Calibrate Current"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(current_cal) = id(current_truth).state / (id(current_raw) - id(current_cal_zero));
+
+  - platform: template
+    name: "3.2 Calibrate Power"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(power_cal) = id(power_truth).state / (id(power_raw)*id(current_cal)*id(voltage_cal));
+
+  - platform: template
+    name: "Reset Calibration"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(power_cal) = 1.0;
+            id(current_cal) = 1.0;
+            id(current_cal_zero) = ${current_zero};
+            id(voltage_cal) = 1.0;
