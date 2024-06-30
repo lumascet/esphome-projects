@@ -30,6 +30,10 @@ network:
 ota:
   - platform: esphome
 
+wifi:
+  ap:
+    ssid: "${name}"
+
 captive_portal:
 
 dashboard_import:

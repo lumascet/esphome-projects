@@ -27,7 +27,6 @@ esp8266:
 logger:
   baud_rate: 0
 
-# Enable Home Assistant API
 api:
 
 network:
@@ -35,10 +34,9 @@ network:
 ota:
   - platform: esphome
 
-# Enable Home Assistant API
 wifi:
-
   ap:
+    ssid: "${name}"
 
 captive_portal:
 

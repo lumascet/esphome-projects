@@ -1,6 +1,8 @@
 # About
 
-Add some information about your project here.
+Supported devices:
+- SP111 V1.1
+- SP111 V1.4
 
 # Installation
 
