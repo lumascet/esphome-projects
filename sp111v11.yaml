@@ -1,159 +1,20 @@
 substitutions:
   name: sp111v11
   friendly_name: SP111 V1.1
-  # Higher value gives lower watt readout
+  project_name: lumascet.sp111v11
+  project_version: "1.2"
+  cf_pin: GPIO05
+  cf1_pin: GPIO04
+
+  current_zero: "0.14"
+  # Higher value gives lower power/current readout
   current_res: "0.0010266"
   # Lower value gives lower voltage readout
-  voltage_div: "1670.24"
-  current_measured: "0.468"
-  current_truth: "0.424"
-  current_zero: "0.020" 
-
-esphome:
-  name: $name
-  friendly_name: $friendly_name
-  name_add_mac_suffix: True
-
-  project:
-    name: lumascet.sp111
-    version: "1.1"
-
-esp8266:
-  board: esp8285
-  #restore_from_flash: true
-  early_pin_init: False #Prevent fast switch toggling on restart
-
-# Enable logging
-logger:
-  baud_rate: 0
-
-network:
-
-ota:
-  - platform: esphome
-
-wifi:
-  ap:
-    ssid: "${name}"
-
-captive_portal:
-
-api:
+  voltage_div: "1670"
 
 dashboard_import:
   package_import_url: github://lumascet/esphome-projects/sp111v11.yaml@main
-  import_full_config: false # or true
+  import_full_config: false
 
-# preferences:
-#   flash_write_interval: 5min  # set to 5min to prevent wearing out the onboard flash module too quickly
-
-# see: https://esphome.io/components/time.html
-time:
-  - platform: homeassistant
-    id: homeassistant_time
-
-text_sensor:
-  - platform: version
-    name: "${friendly_name} Version"
-    icon: mdi:cube-outline
-
-binary_sensor:
-  - platform: status
-    name: "${friendly_name} Status"
-    device_class: connectivity
-
-  # toggle relay on/off
-  - platform: gpio
-    name: "${friendly_name} Button"
-    pin:
-      number: GPIO13
-      mode: INPUT_PULLUP
-      inverted: True
-    on_press:
-      - switch.toggle: button_switch
-
-sensor:
-  - platform: wifi_signal
-    name: "${friendly_name} Wifi Signal"
-    update_interval: 60s
-    icon: mdi:wifi
-
-  - platform: uptime
-    name: "${friendly_name} Uptime"
-    update_interval: 60s
-    icon: mdi:clock-outline
-
-  - platform: total_daily_energy
-    name: "${friendly_name} Energy Today"
-    power_id: "power"
-    filters:
-      # Multiplication factor from W to kW is 0.001
-      - multiply: 0.001
-    unit_of_measurement: kWh
-    icon: mdi:calendar-clock
-
-  - platform: hlw8012
-    model: BL0937
-    sel_pin:
-      number: GPIO12
-      inverted: True
-    cf_pin: GPIO05
-    cf1_pin: GPIO04
-    change_mode_every: 1
-    current_resistor: ${current_res}
-    voltage_divider: ${voltage_div}
-    update_interval: 3s
-
-    current:
-      name: "${friendly_name} Current"
-      unit_of_measurement: A
-      accuracy_decimals: 3
-      icon: mdi:current-ac
-      filters:
-        - calibrate_linear:
-          - ${current_zero} -> 0.0
-          - ${current_measured} -> ${current_truth} 
-        - clamp:
-            min_value: 0
-
-    voltage:
-      name: "${friendly_name} Voltage"
-      unit_of_measurement: V
-      accuracy_decimals: 1
-      icon: mdi:flash
-
-    power:
-      name: "${friendly_name} Power"
-      unit_of_measurement: W
-      id: "power"
-      icon: mdi:power-socket-eu
-
-status_led:
-  pin:
-    number: GPIO02
-    inverted: True
-  id: led_blue
-
-output:
-  - platform: gpio
-    pin: GPIO00
-    inverted: true
-    id: led_red
-
-switch:
-  - platform: template
-    name: "${friendly_name} Switch"
-    icon: mdi:power
-    optimistic: false
-    restore_mode: RESTORE_DEFAULT_OFF
-    lambda: 'return id(relay).state;'
-    id: button_switch
-    turn_on_action:
-      - switch.turn_on: relay
-      - output.turn_on: led_red
-    turn_off_action:
-      - switch.turn_off: relay
-      - output.turn_off: led_red
-  - platform: gpio
-    pin: GPIO15
-    id: relay
+packages:
+  sp111_base: !include packages/sp111-base.yaml

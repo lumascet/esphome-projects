@@ -1,0 +1,281 @@
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: True
+
+  project:
+    name: lumascet.sp111v14
+    version: "1.3"
+
+esp8266:
+  board: esp8285
+  restore_from_flash: True
+  early_pin_init: False #Prevent fast switch toggling on restart
+  
+logger:
+  baud_rate: 0
+
+network:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ap:
+    ssid: "${name}"
+
+captive_portal:
+
+api:
+
+globals:
+  - id: voltage_raw
+    type: float
+    restore_value: False
+    initial_value: "0.0"
+
+  - id: current_raw
+    type: float
+    restore_value: False
+    initial_value: "0.0"
+
+  - id: power_raw
+    type: float
+    restore_value: False
+    initial_value: "0.0"
+
+  - id: voltage_cal
+    type: float
+    restore_value: True
+    initial_value: "1.0"
+    
+  - id: current_cal
+    type: float
+    restore_value: True
+    initial_value: "1.0"
+
+  - id: current_cal_zero
+    type: float
+    restore_value: True
+    initial_value: "${current_zero}"
+
+  - id: power_cal
+    type: float
+    restore_value: True
+    initial_value: "1.0"
+  
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+text_sensor:
+  - platform: version
+    name: "${friendly_name} Version"
+    icon: mdi:cube-outline
+
+binary_sensor:
+  - platform: status
+    name: "${friendly_name} Status"
+    device_class: connectivity
+
+  - platform: gpio
+    name: "${friendly_name} Button"
+    pin:
+      number: GPIO13
+      mode: INPUT_PULLUP
+      inverted: True
+    on_press:
+      - switch.toggle: button_switch
+
+sensor:
+  - platform: wifi_signal
+    name: "${friendly_name} Wifi Signal"
+    update_interval: 60s
+    icon: mdi:wifi
+
+  - platform: uptime
+    name: "${friendly_name} Uptime"
+    update_interval: 60s
+    icon: mdi:clock-outline
+
+  - platform: total_daily_energy
+    name: "${friendly_name} Energy Today"
+    power_id: power_measured
+    filters:
+      - multiply: 0.001
+    unit_of_measurement: kWh
+    icon: mdi:calendar-clock
+
+  - platform: hlw8012
+    id: hlw
+    model: BL0937
+    sel_pin:
+      number: GPIO12
+      inverted: True
+    cf_pin: ${cf_pin}
+    cf1_pin: ${cf1_pin}
+    change_mode_every: 1
+    current_resistor: ${current_res}
+    voltage_divider: ${voltage_div}
+    update_interval: 3s
+
+    current:
+      name: "${friendly_name} Current"
+      id: current_measured
+      unit_of_measurement: A
+      accuracy_decimals: 3
+      icon: mdi:current-ac
+      filters:
+        - lambda: 
+            id(current_raw) = x;
+            return (x -  id(current_cal_zero)) * id(current_cal);
+        - clamp:
+            min_value: 0
+
+    voltage:
+      name: "${friendly_name} Voltage"
+      id: voltage_measured
+      unit_of_measurement: V
+      accuracy_decimals: 1
+      icon: mdi:flash
+      filters:
+        - lambda: 
+            id(voltage_raw) = x;
+            return x * id(voltage_cal);
+
+    power:
+      name: "${friendly_name} Power"
+      id: power_measured
+      device_class: power
+      unit_of_measurement: W
+      accuracy_decimals: 1
+      icon: mdi:power-socket-eu
+      filters:
+        - lambda: 
+            id(power_raw) = x;
+            return x * id(voltage_cal) * id(current_cal) * id(power_cal);
+      on_value: 
+        then:
+          - lambda: 
+              if (id(current_measured).state != 0 && id(voltage_measured).state != 0) {
+                id(power_factor).publish_state(x / (id(current_measured).state * id(voltage_measured).state));
+              } else {
+                id(power_factor).publish_state(0);
+              }
+
+  - platform: template
+    name:  "${friendly_name} Power Factor"
+    id: power_factor
+    device_class: power_factor
+    accuracy_decimals: 2  
+
+status_led:
+  pin:
+    number: GPIO02
+    inverted: True
+  id: led_blue
+
+output:
+  - platform: gpio
+    pin: GPIO00
+    inverted: true
+    id: led_red
+
+switch:
+  - platform: template
+    name: "${friendly_name} Switch"
+    icon: mdi:power
+    optimistic: false
+    restore_mode: RESTORE_DEFAULT_OFF
+    lambda: 'return id(relay).state;'
+    id: button_switch
+    turn_on_action:
+      - switch.turn_on: relay
+      - output.turn_on: led_red
+    turn_off_action:
+      - switch.turn_off: relay
+      - output.turn_off: led_red
+  - platform: gpio
+    pin: GPIO15
+    id: relay
+
+number:
+  - platform: template
+    name: "1.1 Voltage Truth"
+    entity_category: config
+    id: voltage_truth
+    min_value: 200.0
+    max_value: 250.0
+    step: 0.01
+    initial_value: 230.0
+    restore_value: True
+    optimistic: True
+    device_class: voltage
+
+  - platform: template
+    name: "2.1 Current Truth"
+    entity_category: config
+    id: current_truth
+    min_value: 0.1
+    max_value: 16.0
+    step: 0.001
+    initial_value: 0.5
+    restore_value: True
+    optimistic: True
+    device_class: current
+
+  - platform: template
+    name: "3.1 Power Truth"
+    entity_category: config
+    id: power_truth
+    min_value: 0.0
+    max_value: 3600.0
+    step: 0.01
+    initial_value: 100.0
+    restore_value: True
+    optimistic: True
+    device_class: power
+
+button:
+  - platform: template
+    name: "1.2 Calibrate Voltage"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(voltage_cal) = id(voltage_truth).state / id(voltage_raw);
+
+  - platform: template
+    name: "2.2 Calibrate Current Zero"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(current_cal_zero) = id(current_raw);
+            
+  - platform: template
+    name: "2.3 Calibrate Current"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(current_cal) = id(current_truth).state / (id(current_raw) - id(current_cal_zero));
+
+  - platform: template
+    name: "3.2 Calibrate Power"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(power_cal) = id(power_truth).state / (id(power_raw)*id(current_cal)*id(voltage_cal));
+
+  - platform: template
+    name: "Reset Calibration"
+    entity_category: config
+    on_press: 
+      then:
+        - lambda: 
+            id(power_cal) = 1.0;
+            id(current_cal) = 1.0;
+            id(current_cal_zero) = ${current_zero};
+            id(voltage_cal) = 1.0;
