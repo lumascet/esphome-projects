@@ -27,8 +27,6 @@ esp8266:
 logger:
   baud_rate: 0
 
-api:
-
 network:
 
 ota:
@@ -39,6 +37,8 @@ wifi:
     ssid: "${name}"
 
 captive_portal:
+
+api:
 
 dashboard_import:
   package_import_url: github://lumascet/esphome-projects/sp111v11.yaml@main
