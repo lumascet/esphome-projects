@@ -25,6 +25,8 @@ esp8266:
 logger:
   baud_rate: 0
 
+network:
+
 ota:
   - platform: esphome
 
