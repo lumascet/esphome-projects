@@ -6,8 +6,13 @@ on:
       - main
 
 jobs:
-  build:
+  build_sp111v11:
     uses: esphome/workflows/.github/workflows/publish.yml@main
     with:
-      files: sp111v11.yaml,sp111v14.yaml
-      name: SP1111
+      files: sp111v11.yaml
+      name: SP111 V1.1
+  build_sp111v14:
+    uses: esphome/workflows/.github/workflows/publish.yml@main
+    with:
+      files: sp111v14.yaml
+      name: SP111 V1.4
