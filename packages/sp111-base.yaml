@@ -117,10 +117,10 @@ sensor:
       inverted: True
     cf_pin: ${cf_pin}
     cf1_pin: ${cf1_pin}
-    change_mode_every: 1
+    change_mode_every: ${hlw_change_mode_every}
     current_resistor: ${current_res}
     voltage_divider: ${voltage_div}
-    update_interval: 3s
+    update_interval: ${hlw_update_interval}
 
     current:
       name: "${friendly_name} Current"
@@ -181,7 +181,7 @@ status_led:
 output:
   - platform: gpio
     pin: GPIO00
-    inverted: true
+    inverted: True
     id: led_red
 
 switch:
