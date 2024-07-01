@@ -135,9 +135,9 @@ sensor:
         - clamp:
             min_value: 0
         - sliding_window_moving_average:
-            window_size: ${hlw_update_interval}
-            send_every: ${hlw_update_interval}
-            send_first_at: ${hlw_update_interval}
+            window_size: ${hlw_change_mode_every}
+            send_every: ${hlw_change_mode_every}
+            send_first_at: ${hlw_change_mode_every}
 
     voltage:
       name: "Voltage"
@@ -150,9 +150,9 @@ sensor:
             id(voltage_raw) = x;
             return x * id(voltage_cal);
         - sliding_window_moving_average:
-            window_size: ${hlw_update_interval}
-            send_every: ${hlw_update_interval}
-            send_first_at: ${hlw_update_interval}
+            window_size: ${hlw_change_mode_every}
+            send_every: ${hlw_change_mode_every}
+            send_first_at: ${hlw_change_mode_every}
 
     power:
       name: "Power"
@@ -166,9 +166,9 @@ sensor:
             id(power_raw) = x;
             return x * id(voltage_cal) * id(current_cal) * id(power_cal);
         - sliding_window_moving_average:
-            window_size: ${hlw_update_interval}
-            send_every: ${hlw_update_interval}
-            send_first_at: ${hlw_update_interval}
+            window_size: ${hlw_change_mode_every}
+            send_every: ${hlw_change_mode_every}
+            send_first_at: ${hlw_change_mode_every}
       on_value: 
         then:
           - lambda: 
