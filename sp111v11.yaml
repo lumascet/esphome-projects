@@ -6,7 +6,7 @@ substitutions:
   cf_pin: GPIO05
   cf1_pin: GPIO04
   flash_write_interval: 60s
-  hlw_change_mode_every: 1
+  hlw_change_mode_every: "1"
   hlw_update_interval: 3s
 
   current_zero: "0.14"
