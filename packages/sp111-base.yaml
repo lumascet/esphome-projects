@@ -185,8 +185,8 @@ sensor:
     accuracy_decimals: 2
     filters:
       - clamp:
-        - min_value: 0
-        - max_value: 1
+          min_value: 0
+          max_value: 1
 
 status_led:
   pin:
