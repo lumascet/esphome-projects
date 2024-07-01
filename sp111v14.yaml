@@ -2,9 +2,10 @@ substitutions:
   name: sp111v14
   friendly_name: SP111 V1.4
   project_name: lumascet.sp111v14
-  project_version: "1.4"
+  project_version: "1.5"
   cf_pin: GPIO05
   cf1_pin: GPIO14
+  flash_write_interval: 60s
 
   current_zero: "0.14"
   # Higher value gives lower power/current readout
