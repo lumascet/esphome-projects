@@ -134,6 +134,10 @@ sensor:
             return (x -  id(current_cal_zero)) * id(current_cal);
         - clamp:
             min_value: 0
+        - sliding_window_moving_average:
+            window_size: ${hlw_update_interval}
+            send_every: ${hlw_update_interval}
+            send_first_at: ${hlw_update_interval}
 
     voltage:
       name: "Voltage"
@@ -145,6 +149,10 @@ sensor:
         - lambda: 
             id(voltage_raw) = x;
             return x * id(voltage_cal);
+        - sliding_window_moving_average:
+            window_size: ${hlw_update_interval}
+            send_every: ${hlw_update_interval}
+            send_first_at: ${hlw_update_interval}
 
     power:
       name: "Power"
@@ -157,6 +165,10 @@ sensor:
         - lambda: 
             id(power_raw) = x;
             return x * id(voltage_cal) * id(current_cal) * id(power_cal);
+        - sliding_window_moving_average:
+            window_size: ${hlw_update_interval}
+            send_every: ${hlw_update_interval}
+            send_first_at: ${hlw_update_interval}
       on_value: 
         then:
           - lambda: 
@@ -170,7 +182,11 @@ sensor:
     name:  "Power Factor"
     id: power_factor
     device_class: power_factor
-    accuracy_decimals: 2  
+    accuracy_decimals: 2
+    filters:
+      - clamp:
+        - min_value: 0
+        - max_value: 1
 
 status_led:
   pin:
