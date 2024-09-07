@@ -11,7 +11,7 @@ esp8266:
   board: esp8285
   restore_from_flash: True
   early_pin_init: False #Prevent fast switch toggling on restart
-  
+
 preferences:
   flash_write_interval: ${flash_write_interval}
 
@@ -51,7 +51,7 @@ globals:
     type: float
     restore_value: True
     initial_value: "1.0"
-    
+
   - id: current_cal
     type: float
     restore_value: True
@@ -66,7 +66,7 @@ globals:
     type: float
     restore_value: True
     initial_value: "1.0"
-  
+
 time:
   - platform: homeassistant
     id: homeassistant_time
@@ -81,14 +81,15 @@ binary_sensor:
     name: "Status"
     device_class: connectivity
 
-  - platform: gpio
-    name: "Button"
-    pin:
-      number: GPIO13
-      mode: INPUT_PULLUP
-      inverted: True
-    on_press:
-      - switch.toggle: button_switch
+  - platform: template
+    id: in_use
+    name: In Use
+
+  - platform: template
+    id: overload_shutoff
+    name: Overload Shutoff
+    icon: mdi:alert
+    publish_initial_state: True
 
 sensor:
   - platform: wifi_signal
@@ -129,8 +130,7 @@ sensor:
       accuracy_decimals: 3
       icon: mdi:current-ac
       filters:
-        - lambda: 
-            id(current_raw) = x;
+        - lambda: id(current_raw) = x;
             return (x -  id(current_cal_zero)) * id(current_cal);
         - clamp:
             min_value: 0
@@ -138,6 +138,15 @@ sensor:
             window_size: ${hlw_change_mode_every}
             send_every: ${hlw_change_mode_every}
             send_first_at: ${hlw_change_mode_every}
+      on_value:
+        - if:
+            condition:
+              lambda: "return (x >= id(current_shutoff_threshold).state);"
+            then:
+              - binary_sensor.template.publish:
+                  id: overload_shutoff
+                  state: ON
+              - switch.turn_off: relay
 
     voltage:
       name: "Voltage"
@@ -146,8 +155,7 @@ sensor:
       accuracy_decimals: 1
       icon: mdi:flash
       filters:
-        - lambda: 
-            id(voltage_raw) = x;
+        - lambda: id(voltage_raw) = x;
             return x * id(voltage_cal);
         - sliding_window_moving_average:
             window_size: ${hlw_change_mode_every}
@@ -169,17 +177,27 @@ sensor:
             window_size: ${hlw_change_mode_every}
             send_every: ${hlw_change_mode_every}
             send_first_at: ${hlw_change_mode_every}
-      on_value: 
-        then:
-          - lambda: 
-              if (id(current_measured).state != 0 && id(voltage_measured).state != 0) {
-                id(power_factor).publish_state(x / (id(current_measured).state * id(voltage_measured).state));
-              } else {
-                id(power_factor).publish_state(0);
-              }
+      on_value:
+        - lambda:
+            if (id(current_measured).state != 0 && id(voltage_measured).state != 0) {
+              id(power_factor).publish_state(x / (id(current_measured).state * id(voltage_measured).state));
+            } else {
+              id(power_factor).publish_state(0);
+            }
+        - if:
+            condition:
+              lambda: "return (x >= id(power_interlock_threshold).state);"
+            then:
+              - binary_sensor.template.publish:
+                  id: in_use
+                  state: ON
+            else:
+              - binary_sensor.template.publish:
+                  id: in_use
+                  state: OFF
 
   - platform: template
-    name:  "Power Factor"
+    name: "Power Factor"
     id: power_factor
     device_class: power_factor
     accuracy_decimals: 2
@@ -200,25 +218,87 @@ output:
     inverted: True
     id: led_red
 
-switch:
+lock:
   - platform: template
-    name: "Switch"
-    icon: mdi:power
+    id: power_interlock_enabled
+    name: "Power Interlock"
+    optimistic: true
+    entity_category: config
+
+switch:
+  - platform: gpio
+    id: relay
+    pin: ${relay_pin}
+    internal: True
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  - platform: template
+    name: "Relay"
+    icon: mdi:power-socket-eu
     optimistic: false
     restore_mode: RESTORE_DEFAULT_OFF
     lambda: 'return id(relay).state;'
-    id: button_switch
+    id: relay_switch
     turn_on_action:
       - switch.turn_on: relay
       - output.turn_on: led_red
     turn_off_action:
-      - switch.turn_off: relay
-      - output.turn_off: led_red
-  - platform: gpio
-    pin: GPIO15
-    id: relay
+          - if:
+              condition:
+                or:
+                  - binary_sensor.is_on: overload_shutoff
+                  - lock.is_unlocked: power_interlock_enabled
+                  - and:
+                      - lock.is_locked: power_interlock_enabled
+                      - binary_sensor.is_off: in_use
+              then:
+                - switch.turn_off: relay
+                - output.turn_off: led_red
+                - binary_sensor.template.publish:
+                    id: overload_shutoff
+                    state: OFF
 
 number:
+  - platform: template
+    name: "Current Shutoff Threshold"
+    entity_category: config
+    icon: mdi:fuse
+    id: current_shutoff_threshold
+    min_value: 0.0
+    max_value: 16.0
+    step: 0.1
+    initial_value: 10.0
+    restore_value: True
+    optimistic: True
+    device_class: current
+    unit_of_measurement: A
+    mode: box
+
+  - platform: template
+    name: "Power Interlock Threshold"
+    min_value: 1
+    max_value: 3600
+    step: 1
+    initial_value: 10
+    id: power_interlock_threshold
+    entity_category: config
+    optimistic: true # required for changing value from home assistant
+    restore_value: true
+    unit_of_measurement: W
+    mode: box
+    on_value:
+      - if: # set or clear in_use template binary sensor depending on whether power usage is above threshold
+          condition:
+            lambda: "return (id(power_measured).state >= x);"
+          then:
+            - binary_sensor.template.publish:
+                id: in_use
+                state: ON
+          else:
+            - binary_sensor.template.publish:
+                id: in_use
+                state: OFF
+
   - platform: template
     name: "1.1 Voltage Truth"
     entity_category: config
@@ -230,6 +310,8 @@ number:
     restore_value: True
     optimistic: True
     device_class: voltage
+    unit_of_measurement: V
+    mode: box
 
   - platform: template
     name: "2.1 Current Truth"
@@ -242,6 +324,9 @@ number:
     restore_value: True
     optimistic: True
     device_class: current
+    unit_of_measurement: A
+    mode: box
+
 
   - platform: template
     name: "3.1 Power Truth"
@@ -254,47 +339,44 @@ number:
     restore_value: True
     optimistic: True
     device_class: power
+    unit_of_measurement: W
+    mode: box
 
 button:
   - platform: template
     name: "1.2 Calibrate Voltage"
     entity_category: config
-    on_press: 
+    on_press:
       then:
-        - lambda: 
-            id(voltage_cal) = id(voltage_truth).state / id(voltage_raw);
+        - lambda: id(voltage_cal) = id(voltage_truth).state / id(voltage_raw);
 
   - platform: template
     name: "2.2 Calibrate Current Zero"
     entity_category: config
-    on_press: 
+    on_press:
       then:
-        - lambda: 
-            id(current_cal_zero) = id(current_raw);
-            
+        - lambda: id(current_cal_zero) = id(current_raw);
+
   - platform: template
     name: "2.3 Calibrate Current"
     entity_category: config
-    on_press: 
+    on_press:
       then:
-        - lambda: 
-            id(current_cal) = id(current_truth).state / (id(current_raw) - id(current_cal_zero));
+        - lambda: id(current_cal) = id(current_truth).state / (id(current_raw) - id(current_cal_zero));
 
   - platform: template
     name: "3.2 Calibrate Power"
     entity_category: config
-    on_press: 
+    on_press:
       then:
-        - lambda: 
-            id(power_cal) = id(power_truth).state / (id(power_raw)*id(current_cal)*id(voltage_cal));
+        - lambda: id(power_cal) = id(power_truth).state / (id(power_raw)*id(current_cal)*id(voltage_cal));
 
   - platform: template
     name: "Reset Calibration"
     entity_category: config
-    on_press: 
+    on_press:
       then:
-        - lambda: 
-            id(power_cal) = 1.0;
+        - lambda: id(power_cal) = 1.0;
             id(current_cal) = 1.0;
             id(current_cal_zero) = ${current_zero};
             id(voltage_cal) = 1.0;

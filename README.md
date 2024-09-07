@@ -5,6 +5,7 @@ Currently supported devices:
 
 - SP111 V1.1
 - SP111 V1.4
+- SP112 V3.4
 
 # How to use
 
