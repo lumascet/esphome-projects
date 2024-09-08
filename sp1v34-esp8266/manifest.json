@@ -1,0 +1,13 @@
+{
+  "chipFamily": "ESP8266",
+  "ota": {
+    "path": "sp1v34-esp8266/sp1v34-esp8266.ota.bin",
+    "md5": "2426ce128242e8f0420d2ecbeed25e2d"
+  },
+  "parts": [
+    {
+      "path": "sp1v34-esp8266/sp1v34-esp8266.factory.bin",
+      "offset": 0
+    }
+  ]
+}
