@@ -84,6 +84,13 @@ binary_sensor:
   - platform: template
     id: in_use
     name: In Use
+    publish_initial_state: True
+
+  - platform: template
+    id: power_interlock_enabled
+    name: Power Interlock Enabled
+    icon: mdi:lock
+    publish_initial_state: True
 
   - platform: template
     id: overload_shutoff
@@ -134,10 +141,6 @@ sensor:
             return (x -  id(current_cal_zero)) * id(current_cal);
         - clamp:
             min_value: 0
-        - sliding_window_moving_average:
-            window_size: ${hlw_change_mode_every}
-            send_every: ${hlw_change_mode_every}
-            send_first_at: ${hlw_change_mode_every}
       on_value:
         - if:
             condition:
@@ -157,10 +160,6 @@ sensor:
       filters:
         - lambda: id(voltage_raw) = x;
             return x * id(voltage_cal);
-        - sliding_window_moving_average:
-            window_size: ${hlw_change_mode_every}
-            send_every: ${hlw_change_mode_every}
-            send_first_at: ${hlw_change_mode_every}
 
     power:
       name: "Power"
@@ -173,10 +172,6 @@ sensor:
         - lambda: 
             id(power_raw) = x;
             return x * id(voltage_cal) * id(current_cal) * id(power_cal);
-        - sliding_window_moving_average:
-            window_size: ${hlw_change_mode_every}
-            send_every: ${hlw_change_mode_every}
-            send_first_at: ${hlw_change_mode_every}
       on_value:
         - lambda:
             if (id(current_measured).state != 0 && id(voltage_measured).state != 0) {
@@ -207,23 +202,39 @@ sensor:
           max_value: 1
 
 status_led:
-  pin:
-    number: GPIO02
+  pin: 
+    number: ${led_blue_pin}
     inverted: True
   id: led_blue
 
 output:
   - platform: gpio
-    pin: GPIO00
-    inverted: True
+    pin: 
+      number: ${led_red_pin}
+      inverted: True
     id: led_red
 
 lock:
   - platform: template
-    id: power_interlock_enabled
+    id: power_interlock
     name: "Power Interlock"
     optimistic: true
     entity_category: config
+    lock_action:
+      - binary_sensor.template.publish:
+          id: power_interlock_enabled
+          state: ON
+    unlock_action:
+      - binary_sensor.template.publish:
+          id: power_interlock_enabled
+          state: OFF
+    lambda: |-
+      if (id(power_interlock_enabled).state) {
+        return LOCK_STATE_LOCKED;
+      } else {
+        return LOCK_STATE_UNLOCKED;
+      }
+    
 
 switch:
   - platform: gpio
@@ -247,9 +258,9 @@ switch:
               condition:
                 or:
                   - binary_sensor.is_on: overload_shutoff
-                  - lock.is_unlocked: power_interlock_enabled
+                  - binary_sensor.is_off: power_interlock_enabled
                   - and:
-                      - lock.is_locked: power_interlock_enabled
+                      - binary_sensor.is_on: power_interlock_enabled
                       - binary_sensor.is_off: in_use
               then:
                 - switch.turn_off: relay

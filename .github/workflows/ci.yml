@@ -12,6 +12,8 @@ jobs:
         file:
           - sp111v11.yaml
           - sp111v14.yaml
+          - sp112v34.yaml
+          - sp1v34.yaml
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2

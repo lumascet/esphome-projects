@@ -1,8 +1,10 @@
 substitutions:
-  name: sp112
-  friendly_name: SP112
+  name: sp112v34
+  friendly_name: SP112 V3.4
   project_name: lumascet.sp112v34
-  project_version: "1.6"
+  project_version: "1.7"
+  led_blue_pin: GPIO02
+  led_red_pin: GPIO00
   relay_pin: GPIO14
   cf_pin: GPIO05
   cf1_pin: GPIO04
@@ -10,7 +12,7 @@ substitutions:
   hlw_change_mode_every: "1"
   hlw_update_interval: 3s
 
-  current_zero: "0.14"
+  current_zero: "0.0"
   # Higher value gives lower power/current readout
   current_res: "0.0011184"
   # Lower value gives lower voltage readout

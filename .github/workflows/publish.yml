@@ -9,5 +9,5 @@ jobs:
   build:
     uses: esphome/workflows/.github/workflows/publish.yml@main
     with:
-      files: sp111v11.yaml, sp111v14.yaml, sp112v34.yaml
+      files: sp111v11.yaml, sp111v14.yaml, sp112v34.yaml, sp1v34.yaml
       name: SP111

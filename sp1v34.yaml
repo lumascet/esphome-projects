@@ -1,0 +1,26 @@
+substitutions:
+  name: sp1v34
+  friendly_name: SP1 V3.4
+  project_name: lumascet.sp1v34
+  project_version: "1.7"
+  led_blue_pin: GPIO01
+  led_red_pin: GPIO13
+  relay_pin: GPIO14
+  cf_pin: GPIO04
+  cf1_pin: GPIO05
+  flash_write_interval: 60s
+  hlw_change_mode_every: "1"
+  hlw_update_interval: 3s
+
+  current_zero: "0.0"
+  # Higher value gives lower power/current readout
+  current_res: "0.00221"
+  # Lower value gives lower voltage readout
+  voltage_div: "871" 
+
+dashboard_import:
+  package_import_url: github://lumascet/esphome-projects/sp1v34.yaml@main
+  import_full_config: false
+
+packages:
+  sp111_base: !include packages/sp1.yaml
