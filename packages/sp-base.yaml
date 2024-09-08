@@ -219,7 +219,6 @@ lock:
     id: power_interlock
     name: "Power Interlock"
     optimistic: true
-    entity_category: config
     lock_action:
       - binary_sensor.template.publish:
           id: power_interlock_enabled
