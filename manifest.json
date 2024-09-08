@@ -8,7 +8,7 @@
       "chipFamily": "ESP8266",
       "ota": {
         "path": "sp111v11-esp8266/sp111v11-esp8266.ota.bin",
-        "md5": "0df3064de16728e3e632b739ce90c79f"
+        "md5": "870502633392faff3f821b5f722ab986"
       },
       "parts": [
         {
@@ -21,7 +21,7 @@
       "chipFamily": "ESP8266",
       "ota": {
         "path": "sp111v14-esp8266/sp111v14-esp8266.ota.bin",
-        "md5": "a0a233bbbcdf0cfb905a97b6655837f7"
+        "md5": "f59607fcdd793029b2d8e267344cc1e8"
       },
       "parts": [
         {
@@ -34,7 +34,7 @@
       "chipFamily": "ESP8266",
       "ota": {
         "path": "sp112v34-esp8266/sp112v34-esp8266.ota.bin",
-        "md5": "8bdba4c799f0e20bca4e1e46f4529234"
+        "md5": "7a1c52ef31c13589ecf1d3b4959a6eee"
       },
       "parts": [
         {
@@ -47,7 +47,7 @@
       "chipFamily": "ESP8266",
       "ota": {
         "path": "sp1v34-esp8266/sp1v34-esp8266.ota.bin",
-        "md5": "35dae2309a1aee8c90ab410098656bb9"
+        "md5": "e9cf73aa43dea907e1cd17f1f130244e"
       },
       "parts": [
         {
