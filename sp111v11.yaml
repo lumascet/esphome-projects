@@ -2,7 +2,7 @@ substitutions:
   name: sp111v11
   friendly_name: SP111 V1.1
   project_name: lumascet.sp111v11
-  project_version: "1.8"
+  project_version: "1.9"
   led_blue_pin: GPIO02
   led_red_pin: GPIO00
   relay_pin: GPIO15
@@ -11,12 +11,12 @@ substitutions:
   flash_write_interval: 60s
   hlw_change_mode_every: "1"
   hlw_update_interval: 3s
-
-  current_zero: "0.14"
+  
+  current_zero: "0.2"
   # Higher value gives lower power/current readout
-  current_res: "0.0010266"
+  current_res: "0.001173"
   # Lower value gives lower voltage readout
-  voltage_div: "1670"
+  voltage_div: "2078"
 
 dashboard_import:
   package_import_url: github://lumascet/esphome-projects/sp111v11.yaml@main
