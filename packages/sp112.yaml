@@ -6,6 +6,7 @@ sensor:
     id: button_adc
     pin: A0
     update_interval: .1s
+    internal: true
 
 binary_sensor:
   - platform: template
