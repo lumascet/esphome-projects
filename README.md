@@ -1,4 +1,10 @@
-# ESPHome Project Template
+# About
+
+Supported devices:
+- SP111 V1.1
+- SP111 V1.4
+- SP112 V3.4
+- SP1 V1
 
 This repo serves as a template for creating a new ESPHome project.
 

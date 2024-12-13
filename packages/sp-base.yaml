@@ -1,0 +1,525 @@
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: True
+
+  project:
+    name: ${project_name}
+    version: ${project_version}
+
+esp8266:
+  board: esp8285
+  restore_from_flash: True
+  early_pin_init: False #Prevent fast switch toggling on restart
+
+preferences:
+  flash_write_interval: ${flash_write_interval}
+
+logger:
+  baud_rate: 0
+
+network:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ap:
+    ssid: "${name}"
+
+captive_portal:
+
+api:
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+text_sensor:
+  - platform: version
+    name: "Version"
+    icon: mdi:cube-outline
+
+binary_sensor:
+  - platform: status
+    name: "Status"
+    device_class: connectivity
+
+  - platform: template
+    id: in_use
+    name: In Use
+    publish_initial_state: True
+
+  - platform: template
+    id: power_interlock_enabled
+    name: Power Interlock Enabled
+    icon: mdi:lock
+    publish_initial_state: True
+
+  - platform: template
+    id: overload_shutoff
+    name: Overload Shutoff
+    icon: mdi:alert
+    publish_initial_state: True
+
+sensor:
+  - platform: wifi_signal
+    name: "Wifi Signal"
+    update_interval: 60s
+    icon: mdi:wifi
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+    icon: mdi:clock-outline
+
+  - platform: total_daily_energy
+    name: "Energy Today"
+    power_id: power_measured
+    filters:
+      - multiply: 0.001
+    unit_of_measurement: kWh
+    icon: mdi:calendar-clock
+
+  - platform: hlw8012
+    id: hlw
+    model: BL0937
+    sel_pin:
+      number: GPIO12
+      inverted: True
+    cf_pin: ${cf_pin}
+    cf1_pin: ${cf1_pin}
+    change_mode_every: ${hlw_change_mode_every}
+    current_resistor: ${current_res}
+    voltage_divider: ${voltage_div}
+    update_interval: ${hlw_update_interval}
+
+    current:
+      name: "Current"
+      id: current_measured
+      unit_of_measurement: A
+      accuracy_decimals: 3
+      icon: mdi:current-ac
+      filters:
+        - lambda: return (x -  id(current_zero_cal).state) * id(current_cal).state;
+        - clamp:
+            min_value: 0
+        - sliding_window_moving_average:
+            window_size: 3
+            send_every: 1
+      on_raw_value:
+        - lambda: id(raw_current).publish_state(x);
+      on_value:
+        - if:
+            condition:
+              and:
+                - switch.is_on: soft_fuse_switch
+                - lambda: "return (x >= id(current_shutoff_threshold).state);"
+            then:
+              - binary_sensor.template.publish:
+                  id: overload_shutoff
+                  state: ON
+              - switch.turn_off: relay
+
+    voltage:
+      name: "Voltage"
+      id: voltage_measured
+      unit_of_measurement: V
+      accuracy_decimals: 1
+      icon: mdi:flash
+      filters:
+        - lambda: return x * id(voltage_cal).state;
+        - quantile:
+            window_size: 3
+            send_every: 1
+            quantile: .90
+      on_raw_value:
+        - lambda: id(raw_voltage).publish_state(x);
+    power:
+      name: "Power"
+      id: power_measured
+      device_class: power
+      unit_of_measurement: W
+      accuracy_decimals: 1
+      icon: mdi:power-socket-eu
+      filters:
+        - lambda: return x * id(voltage_cal).state * id(current_cal).state * id(power_cal).state * ${power_cal};
+        - sliding_window_moving_average:
+            window_size: 3
+            send_every: 1
+      on_raw_value:
+        - lambda: id(raw_power).publish_state(x);
+      on_value:
+        - lambda:
+            if (id(current_measured).state != 0 && id(voltage_measured).state != 0)
+            {
+            id(power_factor).publish_state(x / (id(current_measured).state * id(voltage_measured).state));
+            }
+            else
+            {
+            id(power_factor).publish_state(0);
+            }
+        - if:
+            condition:
+              lambda: "return (x >= id(power_interlock_threshold).state);"
+            then:
+              - binary_sensor.template.publish:
+                  id: in_use
+                  state: ON
+            else:
+              - binary_sensor.template.publish:
+                  id: in_use
+                  state: OFF
+
+  - platform: template
+    name: "Power Factor"
+    id: power_factor
+    device_class: power_factor
+    accuracy_decimals: 2
+    filters:
+      - clamp:
+          min_value: 0
+          max_value: 1
+
+  - platform: template
+    name: "Calibrated Current Zero"
+    id: current_zero_calibrated
+    icon: mdi:current-ac
+    accuracy_decimals: 3
+    entity_category: diagnostic
+    unit_of_measurement: A
+
+  - platform: template
+    name: "Calibrated Current Resistance"
+    id: current_res_calibrated
+    icon: mdi:resistor
+    accuracy_decimals: 6
+    entity_category: diagnostic
+    unit_of_measurement: Ω
+
+  - platform: template
+    name: "Calibrated Voltage Divider"
+    id: voltage_div_calibrated
+    icon: mdi:division
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    unit_of_measurement: " "
+
+  - platform: template
+    name: "Calibrated Power Multiplier"
+    id: power_mult_calibrated
+    icon: mdi:division
+    accuracy_decimals: 3
+    entity_category: diagnostic
+    unit_of_measurement: " "
+
+
+  - platform: template
+    name: Raw Voltage
+    id: raw_voltage
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    unit_of_measurement: " "
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: template
+    name: Raw Current
+    id: raw_current
+    accuracy_decimals: 3
+    entity_category: diagnostic
+    unit_of_measurement: " "
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+  - platform: template
+    name: Raw Power
+    id: raw_power
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    unit_of_measurement: " "
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+
+status_led:
+  pin:
+    number: ${led_blue_pin}
+    inverted: True
+  id: led_blue
+
+output:
+  - platform: gpio
+    pin:
+      number: ${led_red_pin}
+      inverted: True
+    id: led_red
+
+lock:
+  - platform: template
+    id: power_interlock
+    name: "Power Interlock"
+    optimistic: true
+    lock_action:
+      - binary_sensor.template.publish:
+          id: power_interlock_enabled
+          state: ON
+    unlock_action:
+      - binary_sensor.template.publish:
+          id: power_interlock_enabled
+          state: OFF
+    lambda: |-
+      if (id(power_interlock_enabled).state) {
+        return LOCK_STATE_LOCKED;
+      } else {
+        return LOCK_STATE_UNLOCKED;
+      }
+
+switch:
+  - platform: gpio
+    id: relay
+    pin: ${relay_pin}
+    internal: True
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  - platform: template
+    name: "Relay"
+    icon: mdi:power-socket-eu
+    optimistic: false
+    restore_mode: RESTORE_DEFAULT_OFF
+    lambda: "return id(relay).state;"
+    id: relay_switch
+    turn_on_action:
+      - switch.turn_on: relay
+      - output.turn_on: led_red
+    turn_off_action:
+      - if:
+          condition:
+            or:
+              - binary_sensor.is_on: overload_shutoff
+              - binary_sensor.is_off: power_interlock_enabled
+              - and:
+                  - binary_sensor.is_on: power_interlock_enabled
+                  - binary_sensor.is_off: in_use
+          then:
+            - switch.turn_off: relay
+            - output.turn_off: led_red
+            - binary_sensor.template.publish:
+                id: overload_shutoff
+                state: OFF
+
+  - platform: template
+    name: "Enable Soft Fuse"
+    icon: mdi:fuse
+    optimistic: True
+    restore_mode: RESTORE_DEFAULT_ON
+    id: soft_fuse_switch
+    entity_category: config
+
+number:
+  - platform: template
+    name: "Current Shutoff Threshold"
+    entity_category: config
+    icon: mdi:fuse
+    id: current_shutoff_threshold
+    min_value: 0.0
+    max_value: 16.0
+    step: 0.1
+    initial_value: 10.0
+    restore_value: True
+    optimistic: True
+    device_class: current
+    unit_of_measurement: A
+    mode: box
+
+  - platform: template
+    name: "Power Interlock Threshold"
+    min_value: 1
+    max_value: 3600
+    step: 1
+    initial_value: 10
+    id: power_interlock_threshold
+    entity_category: config
+    optimistic: true # required for changing value from home assistant
+    restore_value: true
+    unit_of_measurement: W
+    mode: box
+    on_value:
+      - if: # set or clear in_use template binary sensor depending on whether power usage is above threshold
+          condition:
+            lambda: "return (id(power_measured).state >= x);"
+          then:
+            - binary_sensor.template.publish:
+                id: in_use
+                state: ON
+          else:
+            - binary_sensor.template.publish:
+                id: in_use
+                state: OFF
+
+  - platform: template
+    name: "1.1 Voltage Truth"
+    entity_category: config
+    id: voltage_truth
+    min_value: 200.0
+    max_value: 250.0
+    step: 0.01
+    initial_value: 230.0
+    restore_value: True
+    optimistic: True
+    device_class: voltage
+    unit_of_measurement: V
+    mode: box
+
+  - platform: template
+    name: "2.1 Current Truth"
+    entity_category: config
+    id: current_truth
+    min_value: 0.1
+    max_value: 16.0
+    step: 0.001
+    initial_value: 0.5
+    restore_value: True
+    optimistic: True
+    device_class: current
+    unit_of_measurement: A
+    mode: box
+
+  - platform: template
+    name: "2.3 Power Truth"
+    entity_category: config
+    id: power_truth
+    min_value: 0.0
+    max_value: 3600.0
+    step: 0.01
+    initial_value: 100.0
+    restore_value: True
+    optimistic: True
+    device_class: power
+    unit_of_measurement: W
+    mode: box
+
+  - platform: template
+    name: "Calibration Factor Voltage Calibration"
+    id: voltage_cal
+    min_value: 0.1
+    max_value: 5.0
+    step: 0.0001
+    initial_value: 1.0
+    restore_value: True
+    entity_category: diagnostic
+    optimistic: true
+    mode: box
+    on_value:
+      sensor.template.publish:
+        id: voltage_div_calibrated
+        state: !lambda "return ${voltage_div} * x;"
+
+  - platform: template
+    name: "Calibration Factor Current "
+    id: current_cal
+    min_value: 0.1
+    max_value: 5.0
+    step: 0.0001
+    initial_value: 1.0
+    restore_value: True
+    entity_category: diagnostic
+    optimistic: true
+    mode: box
+    on_value:
+      sensor.template.publish:
+        id: current_res_calibrated
+        state: !lambda "return ${current_res} / x;"
+
+  - platform: template
+    name: "Calibration Factor Current Zero"
+    id: current_zero_cal
+    min_value: -5.0
+    max_value: 5.0
+    step: 0.0001
+    unit_of_measurement: "A"
+    initial_value: ${current_zero}
+    restore_value: True
+    entity_category: diagnostic
+    optimistic: true
+    mode: box
+    on_value:
+      sensor.template.publish:
+        id: current_zero_calibrated
+        state: !lambda "return x;"
+
+  - platform: template
+    name: "Calibration Factor Power"
+    id: power_cal
+    min_value: 0.1
+    max_value: 5.0
+    step: 0.0001
+    initial_value: 1.0
+    restore_value: True
+    entity_category: diagnostic
+    optimistic: true
+    mode: box
+    on_value: 
+      then:
+        sensor.template.publish:
+          id: power_mult_calibrated
+          state: !lambda "return x * ${power_cal};"
+
+button:
+  - platform: template
+    name: "1.2 Calibrate Voltage"
+    entity_category: config
+    on_press:
+      then:
+        number.set:
+          id: voltage_cal
+          value: !lambda "return id(voltage_truth).state / id(raw_voltage).state;"
+
+  - platform: template
+    name: "1.3 Calibrate Current Zero"
+    entity_category: config
+    on_press:
+      then:
+        number.set:
+          id: current_zero_cal
+          value: !lambda "return id(raw_current).state;"
+
+  - platform: template
+    name: "2.2 Calibrate Current"
+    entity_category: config
+    on_press:
+      then:
+        number.set:
+          id: current_cal
+          value: !lambda "return id(current_truth).state / (id(raw_current).state  - id(current_zero_cal).state );"
+
+  - platform: template
+    name: "2.4 Calibrate Power"
+    entity_category: config
+    on_press:
+      number.set:
+        id: power_cal
+        value: !lambda "return id(power_truth).state / (id(raw_power).state * id(current_cal).state * id(voltage_cal).state * ${power_cal});"
+
+  - platform: template
+    name: "Calibration Reset"
+    entity_category: diagnostic
+    on_press:
+      then:
+        - number.set:
+            id: power_cal
+            value: 1.0
+        - number.set:
+            id: voltage_cal
+            value: 1.0
+        - number.set:
+            id: current_cal
+            value: 1.0
+        - number.set:
+            id: current_zero_cal
+            value: ${current_zero}

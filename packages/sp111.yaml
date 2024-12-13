@@ -1,0 +1,12 @@
+packages:
+  sp_base: !include sp-base.yaml
+
+binary_sensor:
+  - platform: gpio
+    name: "Button"
+    pin:
+      number: GPIO13
+      mode: INPUT_PULLUP
+      inverted: True
+    on_press:
+      - switch.toggle: relay_switch

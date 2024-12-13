@@ -1,0 +1,28 @@
+substitutions:
+  name: sp112v34
+  friendly_name: SP112 V3.4
+  project_name: lumascet.sp112v34
+  project_version: "1.10"
+  led_blue_pin: GPIO02
+  led_red_pin: GPIO00
+  relay_pin: GPIO14
+  cf_pin: GPIO05
+  cf1_pin: GPIO04
+  flash_write_interval: 60s
+  hlw_change_mode_every: "3"
+  hlw_update_interval: 1s
+
+  current_zero: "0.0"
+  # Higher value gives lower power/current readout
+  current_res: "0.001068"
+  # Lower value gives lower voltage readout
+  voltage_div: "1595"
+  # Lower value gives lower power readout
+  power_cal: "1.095"
+
+dashboard_import:
+  package_import_url: github://lumascet/esphome-projects/sp112v34.yaml@main
+  import_full_config: false
+
+packages:
+  sp111_base: !include packages/sp112.yaml

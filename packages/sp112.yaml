@@ -1,0 +1,35 @@
+packages:
+  sp_base: !include sp-base.yaml
+
+sensor:
+  - platform: adc
+    id: button_adc
+    pin: A0
+    update_interval: .1s
+    internal: true
+
+binary_sensor:
+  - platform: template
+    id: button_in
+    lambda: return (id(button_adc).state < .5);
+    on_click:
+      # short button press toggles mains
+      - min_length: 10ms
+        max_length: 250ms
+        then:
+          - switch.toggle: relay_switch
+      # long button press toggles USB
+      - min_length: 250ms
+        max_length: 1000ms
+        then:
+          - switch.toggle: usb_switch
+
+switch:
+  - platform: gpio
+    name: USB
+    icon: mdi:usb
+    id: usb_switch
+    pin:
+      number: GPIO13
+      inverted: true
+    restore_mode: RESTORE_DEFAULT_OFF
