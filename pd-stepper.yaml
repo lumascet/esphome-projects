@@ -27,6 +27,9 @@ substitutions:
 esphome:
   name: pd-stepper
   friendly_name: PD-Stepper
+  project:
+    name: lumascet.pdstepper
+    version: 1.0.0
   platformio_options:
     board_build.flash_mode: dio
     upload_speed: 921600
