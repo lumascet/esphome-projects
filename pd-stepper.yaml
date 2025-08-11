@@ -87,17 +87,7 @@ dashboard_import:
 external_components:
   - source: github://slimcdk/esphome-custom-components
     components: [tmc2209_hub, tmc2209, stepper]
-
-esp32_ble_tracker:
-  scan_parameters:
-    interval: 1100ms
-    window: 1100ms
-    active: true
-
-bluetooth_proxy:
-  active: true
-  connection_slots: 3
-
+    
 # Reduce processing overhead, otherwise encoder position can loose steps
 logger:
   level: ERROR
