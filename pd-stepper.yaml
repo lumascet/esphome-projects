@@ -7,7 +7,8 @@
 # Use diagnostic sensors (TSTEP and stallguard_result) to determine the right settings for your motor.
 
 substitutions:
-  cover_length: "1.4" # m
+  name: "pd-stepper"
+  friendly_name: "PD-Stepper"
   encoder_closed_steps: "1446525"
   encoder_to_stepper_steps: "0.78125" #  200 * 16 steps/u  / 4096 steps/u
   encoder_to_cover_meters: "float(${cover_length})/${encoder_closed_steps}"
@@ -19,17 +20,18 @@ substitutions:
   default_backlash_steps_range: "18000"
   default_cover_speed: "20"
   max_cover_speed: "40" # encoder skipping steps past this
+  cover_length: "1.4" # m
   cover_speed_to_stepper_steps: "(float(${encoder_closed_steps}*${encoder_to_stepper_steps}))/${cover_length}"
-
   stepper_direction: "ccw"
   encoder_direction: "ccw"
 
 esphome:
-  name: pd-stepper
-  friendly_name: PD-Stepper
+  name: ${name}
+  friendly_name: ${friendly_name}
   project:
     name: lumascet.pdstepper
-    version: 1.0.0
+    version: 1.0.1
+  name_add_mac_suffix: True
   platformio_options:
     board_build.flash_mode: dio
     upload_speed: 921600
@@ -61,6 +63,19 @@ esp32:
   board: esp32-s3-devkitc-1
   framework:
     type: esp-idf
+
+network:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ap:
+    ssid: "${name}-fallback"
+
+captive_portal:
+
+api:
 
 preferences:
   flash_write_interval: 1min
