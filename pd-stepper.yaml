@@ -1,0 +1,687 @@
+# Esphome Cover Height & Tilt Controller by lumascet
+
+# Stallguard only works for TCOOL >= TSTEP > TPWMTHRESHOLD
+# TSTEP is the time between two step pulses, fclk/ pulse_freq so it is smaller for higher step frequencies
+# TPWMTHRESHOLD is the threshold for the stealthChop2 algorithm to switch to spreadCycle mode, if speed is faster,
+# (TSTEP < TPWMTHRESHOLD) then it will use spreadCycle, in this mode stallguard does not work.
+# Use diagnostic sensors (TSTEP and stallguard_result) to determine the right settings for your motor.
+
+substitutions:
+  cover_length: "1.4" # m
+  encoder_closed_steps: "1446525"
+  encoder_to_stepper_steps: "0.78125" #  200 * 16 steps/u  / 4096 steps/u
+  encoder_to_cover_meters: "float(${cover_length})/${encoder_closed_steps}"
+  tilt_to_angle_k: "145" # Linear Fit: y = kx + d; -80 degree for closed (0), 65 degree for opened (1)
+  tilt_to_angle_d: "-80"
+  default_stepper_current: "1.5"
+  default_stepper_stallguard_threshold: "127"
+  default_tilt_steps_range: "70000"
+  default_backlash_steps_range: "18000"
+  default_cover_speed: "20"
+  max_cover_speed: "40" # encoder skipping steps past this
+  cover_speed_to_stepper_steps: "(float(${encoder_closed_steps}*${encoder_to_stepper_steps}))/${cover_length}"
+
+  stepper_direction: "ccw"
+  encoder_direction: "ccw"
+
+esphome:
+  name: pd-stepper
+  friendly_name: PD-Stepper
+  platformio_options:
+    board_build.flash_mode: dio
+    upload_speed: 921600
+  on_boot:
+    - tmc2209.configure:
+        direction: ${stepper_direction}
+        microsteps: 16
+        interpolation: True
+        tcool_threshold: 0xFFFFF
+        enable_spreadcycle: !lambda return id(spreadcycle_enabled);
+        tpwm_threshold: 45
+    - tmc2209.stallguard:
+        threshold: !lambda return id(stepper_stallguard_threshold);
+    - tmc2209.currents:
+        ihold: 0
+        tpowerdown: 0
+        iholddelay: 0
+        run_current: !lambda return id(stepper_current);
+        standstill_mode: freewheeling
+
+    - output.turn_off: # CFG1: 5V
+        id: CFG1_pin
+    - output.turn_on: # CFG2: 15V
+        id: CFG2_pin
+    - output.turn_off: # CFG3: 15V
+        id: CFG3_pin
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+preferences:
+  flash_write_interval: 1min
+
+dashboard_import:
+  package_import_url: github://lumascet/esphome-projects/pd-stepper.yaml@main
+  import_full_config: false
+
+external_components:
+  - source: github://slimcdk/esphome-custom-components
+    components: [tmc2209_hub, tmc2209, stepper]
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+bluetooth_proxy:
+  active: true
+  connection_slots: 3
+
+# Reduce processing overhead, otherwise encoder position can loose steps
+logger:
+  level: ERROR
+
+globals:
+  - id: encoder_rotation
+    type: int32_t
+    restore_value: no
+
+  - id: tilt_steps
+    type: int32_t
+    restore_value: yes
+    initial_value: "0"
+
+  - id: backlash_steps
+    type: int32_t
+    restore_value: yes
+    initial_value: "0"
+
+  - id: home_steps
+    type: int32_t
+    restore_value: yes
+    initial_value: "0"
+
+  - id: cover_steps
+    type: int32_t
+    restore_value: yes
+    initial_value: "0"
+
+  - id: tilt_steps_range
+    type: int32_t
+    restore_value: no
+    initial_value: "${default_tilt_steps_range}"
+
+  - id: backlash_range
+    type: int32_t
+    restore_value: no
+    initial_value: "${default_backlash_steps_range}"
+
+  - id: cover_speed
+    type: int32_t
+    initial_value: "${default_cover_speed}"
+    restore_value: yes
+
+  - id: stepper_current
+    type: float
+    initial_value: "${default_stepper_current}"
+    restore_value: yes
+
+  - id: stepper_stallguard_threshold
+    type: int
+    initial_value: "${default_stepper_stallguard_threshold}"
+    restore_value: yes
+
+  - id: spreadcycle_enabled
+    type: bool
+    initial_value: "false"
+    restore_value: yes
+
+number:
+  - platform: template
+    name: "Cover Speed"
+    id: cover_speed_number
+    optimistic: true
+    restore_value: true
+    min_value: 1
+    max_value: "${max_cover_speed}"
+    unit_of_measurement: "mm/s"
+    step: 1
+    initial_value: "${default_cover_speed}"
+    entity_category: config
+    set_action:
+      - lambda: |-
+          id(cover_speed) = x;
+      - select.set:
+          id: operation_mode
+          option: "Custom"
+
+  - platform: template
+    name: "Stepper Current"
+    id: stepper_current_number
+    optimistic: true
+    restore_value: true
+    min_value: 0.1
+    max_value: 2.0
+    initial_value: "${default_stepper_current}"
+    entity_category: config
+    step: 0.1
+    set_action:
+      - lambda: |-
+          id(stepper_current) = x;
+      - tmc2209.currents:
+          run_current: !lambda return id(stepper_current);
+      - select.set:
+          id: operation_mode
+          option: "Custom"
+
+  - platform: template
+    name: "Stepper Stallguard Threshold"
+    optimistic: true
+    restore_value: true
+    min_value: 0
+    max_value: 255
+    initial_value: "${default_stepper_stallguard_threshold}"
+    entity_category: diagnostic
+    step: 1
+    set_action:
+      - lambda: |-
+          id(stepper_stallguard_threshold) = x;
+      - tmc2209.stallguard:
+          threshold: !lambda return x;
+
+  - platform: template
+    name: "Tilt Steps Range"
+    optimistic: true
+    restore_value: true
+    min_value: 100
+    max_value: 100000
+    step: 50
+    initial_value: "${default_tilt_steps_range}"
+    entity_category: diagnostic
+    set_action:
+      - lambda: |-
+          id(tilt_steps_range) = x;
+
+  - platform: template
+    name: "Backlash Steps Range"
+    min_value: 0
+    max_value: 50000
+    step: 10
+    initial_value: "${default_backlash_steps_range}"
+    entity_category: diagnostic
+    set_action:
+      - lambda: |-
+          id(backlash_range) = x;
+
+  - platform: template
+    name: "Cover Angle"
+    min_value: -80
+    max_value: 65
+    step: 1
+    update_interval: 1s
+    lambda: |-
+      double x = 1.0 - float(id(tilt_steps) + id(tilt_steps_range)/2) / (id(tilt_steps_range));
+      double y = ${tilt_to_angle_k} * x + ${tilt_to_angle_d};
+      return round(y * 10.0) / 10.0;  // round to 1 decimal
+    set_action:
+      - lambda: |-
+          float angle = x; // target angle
+          // Inverse linear mapping to normalized value [0..1]
+          float normalized = (angle - ${tilt_to_angle_d}) / ${tilt_to_angle_k};
+          auto call = id(stepper_cover).make_call();
+          call.set_tilt(normalized);
+          call.perform();
+
+switch:
+  - platform: template
+    name: "SpreadCycle Enabled"
+    optimistic: true
+    entity_category: config
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - lambda: id(spreadcycle_enabled) = true;
+      - tmc2209.configure:
+          enable_spreadcycle: True
+    turn_off_action:
+      - lambda: id(spreadcycle_enabled) = false;
+      - tmc2209.configure:
+          enable_spreadcycle: False
+
+i2c:
+  sda: 8
+  scl: 9
+  scan: true
+
+uart:
+  tx_pin: 17
+  rx_pin: 18
+  baud_rate: 712000
+
+output:
+  - platform: ledc
+    pin: 10
+    id: led1_output
+  - platform: ledc
+    pin: 12
+    id: led2_output
+  - platform: gpio
+    pin: GPIO38
+    id: CFG1_pin
+  - platform: gpio
+    pin: GPIO48
+    id: CFG2_pin
+  - platform: gpio
+    pin: GPIO47
+    id: CFG3_pin
+
+light:
+  - platform: monochromatic
+    output: led1_output
+    id: led1
+    name: LED 1
+  - platform: status_led
+    output: led2_output
+    id: led2
+    name: Status LED
+
+stepper:
+  - platform: tmc2209
+    id: motor
+    max_speed: 50000
+    acceleration: 50000 steps/s^2
+    deceleration: 50000 steps/s^2
+    config_dump_include_registers: true
+    rsense: 100 mOhm
+    vsense: False
+    enn_pin: 21
+    diag_pin: 16
+    index_pin: 11
+    on_stall:
+      # Stallguard debounce
+    - lambda: |-
+        const int samples = 5;  // quick burst sampling
+        int sum = 0;
+        for (int i = 0; i < samples; i++) {
+          sum += id(stallguard_result).state;
+          delay(5);  // small gap between samples
+        }
+        float mean = sum / (float)samples;
+
+        if (mean < id(stepper_stallguard_threshold)) {
+          id(motor).stop();
+          ESP_LOGI("stall", "Motor stalled! Mean SG: %.1f", mean);
+
+          id(led1).turn_on();
+          delay(250);
+          id(led1).turn_off();
+        }
+
+button:
+  - platform: restart
+    name: Restart
+
+  - platform: template
+    name: Home
+    id: home
+    entity_category: diagnostic
+    on_press:
+      - stepper.set_speed:
+          id: motor
+          speed: !lambda return float(id(cover_speed))/1000*${cover_speed_to_stepper_steps};
+      - stepper.set_target:
+          id: motor
+          target: -2000000
+
+  - platform: template
+    name: Stop
+    entity_category: diagnostic
+    on_press:
+      - stepper.stop: motor
+
+  - platform: template
+    name: Zeroise Blinds
+    id: zeroise_blinds
+    entity_category: diagnostic
+    on_press:
+      - lambda: |-
+          id(home_steps) = id(cover_steps);
+          ESP_LOGI("zeroise", "Encoder zeroised to %d", id(home_steps));
+
+  - platform: template
+    name: Zeroise Tilt
+    id: zeroise_tilt
+    entity_category: diagnostic
+    on_press:
+      - lambda: |-
+          id(tilt_steps) = -id(tilt_steps_range);
+          ESP_LOGI("tilt", "Tilt zeroised");
+
+binary_sensor:
+  # - platform: gpio
+  # id: stall_guard_sensor
+  # name: StallGuard
+  # pin: 16
+  - platform: gpio
+    name: PD Power
+    pin:
+      number: 15
+      mode: INPUT
+      inverted: true
+    device_class: power
+    filters:
+      - delayed_on: 10ms
+
+as5600:
+  slow_filter: 16x
+
+text_sensor:
+  - platform: template
+    name: "Encoder Magnet Status"
+    icon: mdi:magnet
+    id: encoder_status_text
+
+sensor:
+  - platform: template
+    name: Tstep
+    lambda: return id(motor)->read_register(TSTEP);
+    entity_category: diagnostic
+    update_interval: 250ms
+    disabled_by_default: True
+
+  - platform: tmc2209
+    type: stallguard_result
+    id: stallguard_result
+    name: Stallguard
+    update_interval: 250ms
+    icon: mdi:engine-off
+    disabled_by_default: True
+
+  - platform: tmc2209
+    type: motor_load
+    icon: mdi:percent
+    name: Motor load
+    update_interval: 250ms
+
+  - platform: tmc2209
+    type: actual_current
+    name: Actual current
+    icon: mdi:current
+    update_interval: 250ms
+    disabled_by_default: True
+
+  - platform: tmc2209
+    type: pwm_scale_sum
+    name: PWM Scale Sum
+    update_interval: 250ms
+    disabled_by_default: True
+
+  - platform: tmc2209
+    type: pwm_scale_auto
+    name: PWM Scale Auto
+    update_interval: 250ms
+    disabled_by_default: True
+
+  - platform: tmc2209
+    type: pwm_ofs_auto
+    name: PWM OFS Auto
+    update_interval: 250ms
+    disabled_by_default: True
+
+  - platform: tmc2209
+    type: pwm_grad_auto
+    name: PWM Grad Auto
+    update_interval: 250ms
+    disabled_by_default: True
+
+  - platform: as5600
+    id: encoder_sensor
+    update_interval: 60s
+    internal: True
+    status:
+      id: encoder_status
+      on_value:
+        lambda: |-
+          // Read magnet status from AS5600 register 0x0B
+          uint8_t status = x;
+
+          // Map to readable text
+          switch (status) {
+            case 2:
+              id(encoder_status_text).publish_state("No magnet");
+              break;
+            case 4:
+              id(encoder_status_text).publish_state("Good");
+              break;
+            case 5:
+              id(encoder_status_text).publish_state("Too strong");
+              break;
+            case 6:
+              id(encoder_status_text).publish_state("Too weak");
+              break;
+            default:
+              id(encoder_status_text).publish_state("Unknown");
+              break;
+          }
+
+  - platform: as5600
+    name: Encoder
+    id: encoder
+    update_interval: 0s # beware of the polling rate
+    internal: true # don't publish sensor data to Home Assistant or web server
+    filters:
+      - delta: 2 # throttle the high polling rate to only act on value changes
+      # compute absolute position from angle value
+      - lambda: |
+          const uint16_t curr = x;                    // current encoder value 0-4095
+          const uint16_t prev = id(encoder_rotation); // previous encoder value
+          int delta = 0;
+
+          if (curr > 3000 && prev < 1000) {
+            delta = (4095 - curr + prev); // crossed zero clockwise
+          } else if (curr < 1000 && prev > 3000) {
+            delta = -(4095 - prev + curr); // crossed zero counterclockwise
+          } else {
+            delta = prev - curr;
+          }
+
+          // in case encoder is counting backwards, invert
+          if (std::string("${encoder_direction}") == "cw") {
+              delta = -delta;
+          } 
+
+          id(encoder_rotation) = curr;
+
+          // Update backlash and clamp
+          id(backlash_steps) += delta;
+          float backlash_half_range = id(backlash_range) / 2;
+          if (id(backlash_steps) >= backlash_half_range) {
+            id(backlash_steps) = backlash_half_range;
+            id(cover_steps) += delta;
+            id(tilt_steps) += delta;
+
+          }
+          if (id(backlash_steps) <= -backlash_half_range){
+            id(backlash_steps) = -backlash_half_range;
+            id(cover_steps) += delta;
+            id(tilt_steps) += delta;
+          } 
+
+          float tilt_half_range = id(tilt_steps_range)/2;
+          if (id(tilt_steps) > tilt_half_range) id(tilt_steps) = tilt_half_range;
+          if (id(tilt_steps) < -tilt_half_range) id(tilt_steps) = -tilt_half_range;
+
+          return id(cover_steps);
+
+      - throttle: 250ms # limit the amount of new sensor states from this component
+    accuracy_decimals: 0
+    state_class: measurement
+
+  - platform: template
+    name: "Blind Tilt Angle"
+    lambda: |-
+      double x = 1.0 - float(id(tilt_steps) + id(tilt_steps_range)/2) / (id(tilt_steps_range));
+      double y = ${tilt_to_angle_k} * x + ${tilt_to_angle_d};
+      return round(y * 10.0) / 10.0;  // round to 1 decimal
+    update_interval: 1s
+    accuracy_decimals: 1
+    unit_of_measurement: °
+    icon: mdi:sun-angle
+    state_class: measurement
+
+  - platform: template
+    name: "Blind Distance Closed"
+    lambda: |-
+      return float(id(cover_steps)-id(home_steps)) * ${encoder_to_cover_meters};
+    update_interval: 1s
+    unit_of_measurement: m
+    accuracy_decimals: 3
+    icon: mdi:arrow-collapse-down
+
+  - platform: adc
+    pin: 4
+    name: VBUS Voltage
+    update_interval: 10s
+    attenuation: 12dB
+    filters:
+      - multiply: 8.47742
+    entity_category: diagnostic
+
+select:
+  - platform: template
+    name: "Operation Mode"
+    id: operation_mode
+    icon: mdi:speedometer
+    optimistic: true
+    options:
+      - "Silent"
+      - "Slow"
+      - "Normal"
+      - "Fast"
+      - "Custom"
+    initial_option: "Normal"
+    set_action:
+      - if:
+          condition:
+            lambda: 'return x == "Silent";'
+          then:
+            - number.set:
+                id: stepper_current_number
+                value: 1.3
+            - number.set:
+                id: cover_speed_number
+                value: 4.0
+      - if:
+          condition:
+            lambda: 'return x == "Slow";'
+          then:
+            - number.set:
+                id: stepper_current_number
+                value: 1.5
+            - number.set:
+                id: cover_speed_number
+                value: 10.0
+      - if:
+          condition:
+            lambda: 'return x == "Normal";'
+          then:
+            - number.set:
+                id: stepper_current_number
+                value: 1.5
+            - number.set:
+                id: cover_speed_number
+                value: 20.0
+      - if:
+          condition:
+            lambda: 'return x == "Fast";'
+          then:
+            - number.set:
+                id: stepper_current_number
+                value: 1.8
+            - number.set:
+                id: cover_speed_number
+                value: 40.0
+
+cover:
+  - platform: template
+    id: stepper_cover
+    name: Cover
+    has_position: true
+    assumed_state: false
+    lambda: "return 1.0 - float(id(cover_steps)-id(home_steps)) / ${encoder_closed_steps};"
+    tilt_lambda: "return 1.0 - float(id(tilt_steps) + id(tilt_steps_range)/2) / id(tilt_steps_range);"
+    tilt_action:
+      - stepper.set_speed:
+          id: motor
+          speed: !lambda return float(id(cover_speed))/1000*${cover_speed_to_stepper_steps};
+      - stepper.report_position:
+          id: motor
+          position: !lambda return (1.0f - id(stepper_cover)->position) * ${encoder_closed_steps} * ${encoder_to_stepper_steps};
+      - stepper.set_target:
+          id: motor
+          target: !lambda |-
+            // Map tilt (0.0 - 1.0) → mechanical tilt steps
+            // 0.0 = fully closed one way, 1.0 = fully closed the other way
+            float centered = (0.5f - tilt) * id(tilt_steps_range); // -range/2 .. +range/2
+            // Calculate delta from current
+            int delta = centered - id(tilt_steps);
+            // Backlash compensation: positive = down, negative = up
+            int cover_mechanical_start = (delta > 0) ?  id(backlash_range) / 2 :
+                                        (delta < 0) ? -id(backlash_range) / 2 : 0;
+            // Final target position
+            return id(motor).current_position +
+                  (delta + cover_mechanical_start - id(backlash_steps)) *
+                  ${encoder_to_stepper_steps};
+    stop_action:
+      - stepper.stop: motor
+    open_action:
+      - stepper.set_speed:
+          id: motor
+          speed: !lambda return float(id(cover_speed))/1000*${cover_speed_to_stepper_steps};
+      - stepper.report_position:
+          id: motor
+          position: !lambda return (1.0 - id(stepper_cover)->position) * ${encoder_closed_steps} * ${encoder_to_stepper_steps};
+      - stepper.set_target:
+          id: motor
+          target: !lambda |-
+            int target = 0;
+            int delta = target - id(cover_steps);
+            int cover_mechanical_start = (delta > 0) ?  id(backlash_range) / 2 :
+                                        (delta < 0) ? -id(backlash_range) / 2 : 0;
+            return (target + cover_mechanical_start - id(backlash_steps)) *
+                  ${encoder_to_stepper_steps};
+    close_action:
+      - stepper.set_speed:
+          id: motor
+          speed: !lambda return float(id(cover_speed))/1000*${cover_speed_to_stepper_steps};
+      - stepper.report_position:
+          id: motor
+          position: !lambda return (1.0 - id(stepper_cover)->position) * ${encoder_closed_steps} * ${encoder_to_stepper_steps};
+      - stepper.set_target:
+          id: motor
+          target: !lambda |-
+            int target = ${encoder_closed_steps};
+            int delta = target - id(cover_steps);
+            int cover_mechanical_start = (delta > 0) ?  id(backlash_range) / 2 :
+                                        (delta < 0) ? -id(backlash_range) / 2 : 0;
+          
+            return (target + cover_mechanical_start - id(backlash_steps)) *
+                  ${encoder_to_stepper_steps};
+    position_action:
+      - stepper.set_speed:
+          id: motor
+          speed: !lambda return float(id(cover_speed))/1000*${cover_speed_to_stepper_steps};
+      - stepper.report_position:
+          id: motor
+          position: !lambda return (1.0 - id(stepper_cover)->position) * ${encoder_closed_steps} * ${encoder_to_stepper_steps};
+      - stepper.set_target:
+          id: motor
+          target: !lambda |-
+            int target = (1.0-pos) * ${encoder_closed_steps};
+            int delta = target - id(cover_steps);
+            int cover_mechanical_start = (delta > 0) ?  id(backlash_range) / 2 :
+                                        (delta < 0) ? -id(backlash_range) / 2 : 0;
+            return (target + cover_mechanical_start - id(backlash_steps)) *
+                  ${encoder_to_stepper_steps};
