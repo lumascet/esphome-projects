@@ -2,7 +2,7 @@ substitutions:
   name: sp112v34
   friendly_name: SP112 V3.4
   project_name: lumascet.sp112v34
-  project_version: "1.10"
+  project_version: "1.11"
   led_blue_pin: GPIO02
   led_red_pin: GPIO00
   relay_pin: GPIO14

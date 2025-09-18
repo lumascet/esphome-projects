@@ -2,7 +2,7 @@ substitutions:
   name: sp1v1
   friendly_name: SP1 V1
   project_name: lumascet.sp1v1
-  project_version: "1.10"
+  project_version: "1.11"
   led_blue_pin: GPIO00
   led_red_pin: GPIO02
   relay_pin: GPIO15
