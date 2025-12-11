@@ -33,7 +33,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: lumascet.pdstepper
-    version: 1.1.2
+    version: 1.2.1
   name_add_mac_suffix: True
   platformio_options:
     board_build.flash_mode: dio
@@ -93,7 +93,7 @@ external_components:
 
 # Reduce processing overhead, otherwise encoder position can loose steps
 logger:
-  level: ERROR
+  level: WARN
 
 globals:
   - id: encoder_rotation
@@ -149,6 +149,27 @@ globals:
     type: bool
     initial_value: "false"
     restore_value: yes
+
+  - id: last_encoder_value
+    type: int32_t
+    restore_value: no
+    initial_value: "0"
+
+  - id: last_stepper_position
+    type: int32_t
+    restore_value: no
+    initial_value: "0"
+
+  - id: encoder_stall_counter
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+  - id: encoder_stall_timestamp
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
 
 number:
   - platform: template
@@ -288,16 +309,6 @@ output:
     pin: GPIO47
     id: CFG3_pin
 
-light:
-  - platform: monochromatic
-    output: led1_output
-    id: led1
-    name: LED 1
-  - platform: status_led
-    output: led2_output
-    id: led2
-    name: Status LED
-
 stepper:
   - platform: tmc2209
     id: motor
@@ -325,9 +336,9 @@ stepper:
             id(motor).stop();
             ESP_LOGI("stall", "Motor stalled! Mean SG: %.1f", mean);
 
-            id(led1).turn_on();
+            id(led1_output).turn_on();
             delay(250);
-            id(led1).turn_off();
+            id(led1_output).turn_off();
           }
 
 button:
@@ -388,6 +399,12 @@ binary_sensor:
     device_class: power
     filters:
       - delayed_on: 10ms
+
+  - platform: template
+    name: "Encoder Stall"
+    id: encoder_stall_sensor
+    device_class: problem
+    icon: mdi:alert
 
 as5600:
   slow_filter: 16x
@@ -570,6 +587,7 @@ select:
     id: operation_mode
     icon: mdi:speedometer
     optimistic: true
+    restore_value: true
     options:
       - "Silent"
       - "Slow"
@@ -723,3 +741,81 @@ cover:
                                         (delta < 0) ? -id(backlash_range) / 2 : 0;
             return (target + cover_mechanical_start - id(backlash_steps)) *
                   ${encoder_to_stepper_steps};
+
+interval:
+  - interval: 250ms
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+
+          // Get current positions
+          int32_t current_encoder = id(cover_steps) + id(backlash_steps);
+          int32_t current_stepper = id(motor).current_position;
+
+          ESP_LOGI("encoder_guard", 
+                   "Coversteps: %d, Stepper: %d, Backlash: %d", 
+                   id(cover_steps), current_stepper, id(backlash_steps));
+
+          // Calculate expected encoder delta based on stepper movement and backlash
+          int32_t stepper_delta = current_stepper - id(last_stepper_position);
+          
+          // Check if stepper is moving (position changed)
+          bool stepper_moving = (stepper_delta != 0);
+
+          // If stepper is moving, check if encoder should be moving
+          if (stepper_moving) {
+            
+            int encoder_steps_min = 0.9 * abs(stepper_delta / ${encoder_to_stepper_steps}); // 90% threshold
+            int encoder_steps_max = 1.1 * abs(stepper_delta / ${encoder_to_stepper_steps}); // 110% threshold
+
+            bool encoder_moving = false;
+            int32_t encoder_delta = abs(current_encoder - id(last_encoder_value));
+            if (encoder_delta >= encoder_steps_min && encoder_delta <= encoder_steps_max) {
+              encoder_moving = true;
+            }
+
+            // Only check for stall if we're NOT in the backlash compensation zone
+            if (!encoder_moving) {
+              // Stepper moves outside backlash, but encoder doesn't → potential stall
+              id(encoder_stall_counter)++;
+
+              // Encoder stuck for 1 s (4 intervals) → STALL
+              if (id(encoder_stall_counter) >= 4) {
+                ESP_LOGW("encoder_guard", 
+                         "Encoder stalled! Stepper moving but encoder stuck. "
+                         "Encoder: %d, Stepper: %d", 
+                         current_encoder, current_stepper);
+
+                id(motor).stop();
+
+                // Trigger stall binary sensor
+                id(encoder_stall_sensor).publish_state(true);
+
+                // LED feedback
+                id(led1_output).turn_on();
+                id(encoder_stall_timestamp) = now;
+              }
+            } else {
+              // Either in backlash zone OR encoder is moving → all good, reset counter
+              id(encoder_stall_counter) = 0;
+
+              if (id(encoder_stall_sensor).state) {
+                id(encoder_stall_sensor).publish_state(false);
+              }
+            }
+          } else {
+            // Stepper not moving → reset stall counter
+            id(encoder_stall_counter) = 0;
+          }
+
+          // Update last positions
+          id(last_encoder_value) = current_encoder;
+          id(last_stepper_position) = current_stepper;
+
+          // Auto-clear Stall Sensor after 3 seconds (non-blocking)
+          if (id(encoder_stall_sensor).state != false &&
+              now - id(encoder_stall_timestamp) >= 3000) {
+
+            id(encoder_stall_sensor).publish_state(false);
+            id(led1_output).turn_off();
+          }
