@@ -33,7 +33,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: lumascet.pdstepper
-    version: 1.1.1
+    version: 1.1.2
   name_add_mac_suffix: True
   platformio_options:
     board_build.flash_mode: dio
@@ -359,7 +359,8 @@ button:
     on_press:
       - lambda: |-
           // Use cover_steps + backlog as true current mechanical steps, then reset backlog
-          int adjusted = id(cover_steps) + id(backlash_steps);
+          id(cover_steps) = 0;
+          int adjusted = id(cover_steps);
           id(home_steps) = adjusted;
           id(backlash_steps) = 0;
           ESP_LOGI("zeroise", "Encoder zeroised to %d (cover=%d, backlash=%d)", adjusted, id(cover_steps), id(backlash_steps));
@@ -667,17 +668,17 @@ cover:
           id: motor
           target: !lambda |-
             int32_t target = 0;
-            int32_t delta = -(target - id(cover_steps));
+            int32_t delta = target - id(cover_steps);
             int32_t cover_mechanical_start = (delta > 0) ?  id(backlash_range) / 2 :
                                         (delta < 0) ? -id(backlash_range) / 2 : 0;
             // Compute overshoot in encoder steps (float)
             int32_t overshoot_steps = (float(${overshoot_cal_open_mm}) / 1000.0) / ${encoder_to_cover_meters};
             //print debug
-            ESP_LOGI("open_action", "target: %d", target);
-            ESP_LOGI("open_action", "cover_steps: %d", id(cover_steps));
-            ESP_LOGI("open_action", "delta: %d", delta);
-            ESP_LOGI("open_action", "overshoot_steps: %d", overshoot_steps);
-            ESP_LOGI("open_action", "cover_mechanical_start: %d", cover_mechanical_start);
+            //ESP_LOGI("open_action", "target: %d", target);
+            //ESP_LOGI("open_action", "cover_steps: %d", id(cover_steps));
+            //ESP_LOGI("open_action", "delta: %d", delta);
+            //ESP_LOGI("open_action", "overshoot_steps: %d", overshoot_steps);
+            //ESP_LOGI("open_action", "cover_mechanical_start: %d", cover_mechanical_start);
             // Return target in stepper steps (float)
             return (target + cover_mechanical_start - id(backlash_steps) - overshoot_steps) 
                   * ${encoder_to_stepper_steps};
@@ -699,11 +700,11 @@ cover:
             // Compute overshoot in encoder steps (float)
             float overshoot_steps = ${overshoot_cal_close_mm}/1000.0 / ${encoder_to_cover_meters};
             // Return target in stepper steps (float)
-            ESP_LOGI("close_action", "target: %d", target);
-            ESP_LOGI("close_action", "cover_steps: %d", id(cover_steps));
-            ESP_LOGI("close_action", "delta: %d", delta);
-            ESP_LOGI("close_action", "overshoot_steps: %d", overshoot_steps);
-            ESP_LOGI("close_action", "cover_mechanical_start: %d", cover_mechanical_start);
+            //ESP_LOGI("close_action", "target: %d", target);
+            //ESP_LOGI("close_action", "cover_steps: %d", id(cover_steps));
+            //ESP_LOGI("close_action", "delta: %d", delta);
+            //ESP_LOGI("close_action", "overshoot_steps: %d", overshoot_steps);
+            //ESP_LOGI("close_action", "cover_mechanical_start: %d", cover_mechanical_start);
             return (target + cover_mechanical_start - id(backlash_steps) + overshoot_steps) 
                   * ${encoder_to_stepper_steps};
     position_action:
