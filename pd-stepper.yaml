@@ -33,7 +33,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: lumascet.pdstepper
-    version: 1.2.1
+    version: 1.3.0
   name_add_mac_suffix: True
   platformio_options:
     board_build.flash_mode: dio
@@ -334,7 +334,7 @@ stepper:
 
           if (mean < id(stepper_stallguard_threshold)) {
             id(motor).stop();
-            ESP_LOGI("stall", "Motor stalled! Mean SG: %.1f", mean);
+            ESP_LOGW("stall", "Motor stalled! Mean SG: %.1f", mean);
 
             id(led1_output).turn_on();
             delay(250);
@@ -369,12 +369,10 @@ button:
     entity_category: diagnostic
     on_press:
       - lambda: |-
-          // Use cover_steps + backlog as true current mechanical steps, then reset backlog
           id(cover_steps) = 0;
-          int adjusted = id(cover_steps);
-          id(home_steps) = adjusted;
+          id(home_steps) = 0;
           id(backlash_steps) = 0;
-          ESP_LOGI("zeroise", "Encoder zeroised to %d (cover=%d, backlash=%d)", adjusted, id(cover_steps), id(backlash_steps));
+          ESP_LOGI("zeroise", "Encoder zeroised");
 
   - platform: template
     name: Zeroise Tilt
@@ -530,16 +528,18 @@ sensor:
           id(backlash_steps) += delta;
           float backlash_half_range = id(backlash_range) / 2;
           if (id(backlash_steps) >= backlash_half_range) {
+            int overflow = id(backlash_steps) - (int)backlash_half_range;
             id(backlash_steps) = backlash_half_range;
-            id(cover_steps) += delta;
-            id(tilt_steps) += delta;
+            id(cover_steps) += overflow;
+            id(tilt_steps) += overflow;
 
           }
           else if (id(backlash_steps) < -backlash_half_range){
+            int overflow = id(backlash_steps) + (int)backlash_half_range;
             id(backlash_steps) = -backlash_half_range;
-            id(cover_steps) += delta;
-            id(tilt_steps) += delta;
-          } 
+            id(cover_steps) += overflow;
+            id(tilt_steps) += overflow;
+          }
 
           float tilt_half_range = id(tilt_steps_range)/2;
           if (id(tilt_steps) > tilt_half_range) id(tilt_steps) = tilt_half_range;
@@ -657,7 +657,7 @@ cover:
           speed: !lambda return float(id(cover_speed))/1000*${steps_per_meter};
       - stepper.report_position:
           id: motor
-          position: !lambda return (1.0f - id(stepper_cover)->position) * ${encoder_closed_steps} * ${encoder_to_stepper_steps};
+          position: !lambda return float(id(cover_steps) - id(home_steps)) * ${encoder_to_stepper_steps};
       - stepper.set_target:
           id: motor
           target: !lambda |-
@@ -681,7 +681,7 @@ cover:
           speed: !lambda return float(id(cover_speed))/1000*${steps_per_meter};
       - stepper.report_position:
           id: motor
-          position: !lambda return (1.0 - id(stepper_cover)->position) * ${encoder_closed_steps} * ${encoder_to_stepper_steps};
+          position: !lambda return float(id(cover_steps) - id(home_steps)) * ${encoder_to_stepper_steps};
       - stepper.set_target:
           id: motor
           target: !lambda |-
@@ -690,7 +690,7 @@ cover:
             int32_t cover_mechanical_start = (delta > 0) ?  id(backlash_range) / 2 :
                                         (delta < 0) ? -id(backlash_range) / 2 : 0;
             // Compute overshoot in encoder steps (float)
-            int32_t overshoot_steps = (float(${overshoot_cal_open_mm}) / 1000.0) / ${encoder_to_cover_meters};
+            float overshoot_steps = (float(${overshoot_cal_open_mm}) / 1000.0) / ${encoder_to_cover_meters};
             //print debug
             //ESP_LOGI("open_action", "target: %d", target);
             //ESP_LOGI("open_action", "cover_steps: %d", id(cover_steps));
@@ -707,7 +707,7 @@ cover:
           speed: !lambda return float(id(cover_speed))/1000*${steps_per_meter};
       - stepper.report_position:
           id: motor
-          position: !lambda return (1.0 - id(stepper_cover)->position) * ${encoder_closed_steps} * ${encoder_to_stepper_steps};
+          position: !lambda return float(id(cover_steps) - id(home_steps)) * ${encoder_to_stepper_steps};
       - stepper.set_target:
           id: motor
           target: !lambda |-
@@ -731,7 +731,7 @@ cover:
           speed: !lambda return float(id(cover_speed))/1000*${steps_per_meter};
       - stepper.report_position:
           id: motor
-          position: !lambda return (1.0 - id(stepper_cover)->position) * ${encoder_closed_steps} * ${encoder_to_stepper_steps};
+          position: !lambda return float(id(cover_steps) - id(home_steps)) * ${encoder_to_stepper_steps};
       - stepper.set_target:
           id: motor
           target: !lambda |-
@@ -801,6 +801,7 @@ interval:
 
               if (id(encoder_stall_sensor).state) {
                 id(encoder_stall_sensor).publish_state(false);
+                id(led1_output).turn_off();
               }
             }
           } else {
