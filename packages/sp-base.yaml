@@ -1,3 +1,6 @@
+substitutions:
+  relay_restore_mode: RESTORE_DEFAULT_OFF
+
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
@@ -6,6 +9,24 @@ esphome:
   project:
     name: ${project_name}
     version: ${project_version}
+
+  on_boot:
+    priority: -10
+    then:
+      - if:
+          condition:
+            lambda: "return id(overload_shutoff_state);"
+          then:
+            - binary_sensor.template.publish:
+                id: overload_shutoff
+                state: ON
+      - if:
+          condition:
+            switch.is_on: relay
+          then:
+            - output.turn_on: led_red
+          else:
+            - output.turn_off: led_red
 
 esp8266:
   board: esp8285
@@ -17,6 +38,11 @@ preferences:
 
 globals:
   - id: power_interlock_enabled
+    type: bool
+    initial_value: "false"
+    restore_value: yes
+
+  - id: overload_shutoff_state
     type: bool
     initial_value: "false"
     restore_value: yes
@@ -114,6 +140,7 @@ sensor:
                 - switch.is_on: soft_fuse_switch
                 - lambda: "return (x >= id(current_shutoff_threshold).state);"
             then:
+              - lambda: "id(overload_shutoff_state) = true;"
               - binary_sensor.template.publish:
                   id: overload_shutoff
                   state: ON
@@ -127,10 +154,9 @@ sensor:
       icon: mdi:flash
       filters:
         - lambda: return x * id(voltage_cal).state;
-        - quantile:
+        - sliding_window_moving_average:
             window_size: 3
             send_every: 1
-            quantile: .90
       on_raw_value:
         - lambda: id(raw_voltage).publish_state(x);
     power:
@@ -281,13 +307,13 @@ switch:
     id: relay
     pin: ${relay_pin}
     internal: True
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: ${relay_restore_mode}
 
   - platform: template
     name: "Relay"
     icon: mdi:power-socket-eu
     optimistic: false
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: ${relay_restore_mode}
     lambda: "return id(relay).state;"
     id: relay_switch
     turn_on_action:
@@ -305,6 +331,7 @@ switch:
           then:
             - switch.turn_off: relay
             - output.turn_off: led_red
+            - lambda: "id(overload_shutoff_state) = false;"
             - binary_sensor.template.publish:
                 id: overload_shutoff
                 state: OFF
@@ -474,7 +501,7 @@ button:
       then:
         number.set:
           id: voltage_cal
-          value: !lambda "return id(voltage_truth).state / id(raw_voltage).state;"
+          value: !lambda "return id(raw_voltage).state != 0 ? id(voltage_truth).state / id(raw_voltage).state : 1.0;"
 
   - platform: template
     name: "1.3 Calibrate Current Zero"
@@ -492,7 +519,7 @@ button:
       then:
         number.set:
           id: current_cal
-          value: !lambda "return id(current_truth).state / (id(raw_current).state  - id(current_zero_cal).state );"
+          value: !lambda "float denom = id(raw_current).state - id(current_zero_cal).state; return denom != 0 ? id(current_truth).state / denom : 1.0;"
 
   - platform: template
     name: "2.4 Calibrate Power"
@@ -500,7 +527,7 @@ button:
     on_press:
       number.set:
         id: power_cal
-        value: !lambda "return id(power_truth).state / (id(raw_power).state * id(current_cal).state * id(voltage_cal).state * ${power_cal});"
+        value: !lambda "float denom = id(raw_power).state * id(current_cal).state * id(voltage_cal).state * ${power_cal}; return denom != 0 ? id(power_truth).state / denom : 1.0;"
 
   - platform: template
     name: "Calibration Reset"
