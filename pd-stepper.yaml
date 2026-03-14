@@ -33,7 +33,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: lumascet.pdstepper
-    version: 1.3.1
+    version: 1.3.2
   name_add_mac_suffix: True
   platformio_options:
     board_build.flash_mode: dio
@@ -54,13 +54,15 @@ esphome:
         iholddelay: 0
         run_current: !lambda return id(stepper_current);
         standstill_mode: freewheeling
-
     - output.turn_off: # CFG1: 5V
         id: CFG1_pin
     - output.turn_on: # CFG2: 15V
         id: CFG2_pin
     - output.turn_off: # CFG3: 15V
         id: CFG3_pin
+    - binary_sensor.template.publish:
+        id: encoder_stall_sensor
+        state: OFF
 
 esp32:
   board: esp32-s3-devkitc-1
