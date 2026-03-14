@@ -13,13 +13,12 @@ esphome:
   on_boot:
     priority: -10
     then:
-      - if:
-          condition:
-            lambda: "return id(overload_shutoff_state);"
-          then:
-            - binary_sensor.template.publish:
-                id: overload_shutoff
-                state: ON
+      - binary_sensor.template.publish:
+          id: in_use
+          state: OFF
+      - binary_sensor.template.publish:
+          id: overload_shutoff
+          state: !lambda "return id(overload_shutoff_state);"
       - if:
           condition:
             switch.is_on: relay
