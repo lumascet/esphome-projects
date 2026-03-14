@@ -33,7 +33,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: lumascet.pdstepper
-    version: 1.3.0
+    version: 1.3.1
   name_add_mac_suffix: True
   platformio_options:
     board_build.flash_mode: dio
@@ -122,12 +122,12 @@ globals:
 
   - id: tilt_steps_range
     type: int32_t
-    restore_value: no
+    restore_value: yes
     initial_value: "${default_tilt_steps_range}"
 
   - id: backlash_range
     type: int32_t
-    restore_value: no
+    restore_value: yes
     initial_value: "${default_backlash_steps_range}"
 
   - id: cover_speed
@@ -239,6 +239,8 @@ number:
 
   - platform: template
     name: "Backlash Steps Range"
+    optimistic: true
+    restore_value: true
     min_value: 0
     max_value: 50000
     step: 10
@@ -255,7 +257,7 @@ number:
     step: 1
     update_interval: 1s
     lambda: |-
-      double x = 1.0 - float(id(tilt_steps) + id(tilt_steps_range)/2) / (id(tilt_steps_range));
+      double x = 1.0 - float(id(tilt_steps) + id(tilt_steps_range) / 2) / (id(tilt_steps_range));
       double y = ${tilt_to_angle_k} * x + ${tilt_to_angle_d};
       return round(y * 10.0) / 10.0;  // round to 1 decimal
     set_action:
@@ -322,23 +324,12 @@ stepper:
     diag_pin: 16
     index_pin: 11
     on_stall:
-      # Stallguard debounce
       - lambda: |-
-          const int samples = 5;  // quick burst sampling
-          int sum = 0;
-          for (int i = 0; i < samples; i++) {
-            sum += id(stallguard_result).state;
-            delay(5);  // small gap between samples
-          }
-          float mean = sum / (float)samples;
-
-          if (mean < id(stepper_stallguard_threshold)) {
+          if (id(stallguard_result).state < id(stepper_stallguard_threshold)) {
             id(motor).stop();
-            ESP_LOGW("stall", "Motor stalled! Mean SG: %.1f", mean);
-
+            ESP_LOGW("stall", "Motor stalled! SG: %.0f", id(stallguard_result).state);
             id(led1_output).turn_on();
-            delay(250);
-            id(led1_output).turn_off();
+            id(encoder_stall_timestamp) = millis();
           }
 
 button:
@@ -510,9 +501,9 @@ sensor:
           int delta = 0;
 
           if (curr > 3000 && prev < 1000) {
-            delta = (4095 - curr + prev); // crossed zero clockwise
+            delta = (4096 - curr + prev); // crossed zero clockwise
           } else if (curr < 1000 && prev > 3000) {
-            delta = -(4095 - prev + curr); // crossed zero counterclockwise
+            delta = -(4096 - prev + curr); // crossed zero counterclockwise
           } else {
             delta = prev - curr;
           }
@@ -526,7 +517,7 @@ sensor:
 
           // Update backlash and clamp
           id(backlash_steps) += delta;
-          float backlash_half_range = id(backlash_range) / 2;
+          float backlash_half_range = id(backlash_range) / 2.0f;
           if (id(backlash_steps) >= backlash_half_range) {
             int overflow = id(backlash_steps) - (int)backlash_half_range;
             id(backlash_steps) = backlash_half_range;
@@ -541,7 +532,7 @@ sensor:
             id(tilt_steps) += overflow;
           }
 
-          float tilt_half_range = id(tilt_steps_range)/2;
+          float tilt_half_range = id(tilt_steps_range) / 2.0f;
           if (id(tilt_steps) > tilt_half_range) id(tilt_steps) = tilt_half_range;
           if (id(tilt_steps) < -tilt_half_range) id(tilt_steps) = -tilt_half_range;
 
@@ -554,7 +545,7 @@ sensor:
   - platform: template
     name: "Blind Tilt Angle"
     lambda: |-
-      double x = 1.0 - float(id(tilt_steps) + id(tilt_steps_range)/2) / (id(tilt_steps_range));
+      double x = 1.0 - float(id(tilt_steps) + id(tilt_steps_range) / 2) / (id(tilt_steps_range));
       double y = ${tilt_to_angle_k} * x + ${tilt_to_angle_d};
       return round(y * 10.0) / 10.0;  // round to 1 decimal
     update_interval: 1s
@@ -650,7 +641,7 @@ cover:
       if (pos > 1.0f - dz) pos = 1.0f;
       else if (pos < dz) pos = 0.0f;
       return pos;
-    tilt_lambda: "return 1.0 - float(id(tilt_steps) + id(tilt_steps_range)/2) / id(tilt_steps_range);"
+    tilt_lambda: "return 1.0 - float(id(tilt_steps) + id(tilt_steps_range) / 2) / id(tilt_steps_range);"
     tilt_action:
       - stepper.set_speed:
           id: motor
