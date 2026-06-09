@@ -33,7 +33,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: lumascet.pdstepper
-    version: 1.3.2
+    version: 1.3.3
   name_add_mac_suffix: True
   platformio_options:
     board_build.flash_mode: dio
@@ -150,6 +150,16 @@ globals:
   - id: spreadcycle_enabled
     type: bool
     initial_value: "false"
+    restore_value: yes
+
+  - id: tilt_speed
+    type: int32_t
+    initial_value: "4" # mm/s, slowest (Silent) profile by default
+    restore_value: yes
+
+  - id: tilt_current
+    type: float
+    initial_value: "1.3" # A, slowest (Silent) profile by default
     restore_value: yes
 
   - id: last_encoder_value
@@ -330,6 +340,9 @@ stepper:
           if (id(stallguard_result).state < id(stepper_stallguard_threshold)) {
             id(motor).stop();
             ESP_LOGW("stall", "Motor stalled! SG: %.0f", id(stallguard_result).state);
+            // Set the problem sensor so the interval auto-clear (gated on this
+            // sensor) actually turns the LED back off after the timeout.
+            id(encoder_stall_sensor).publish_state(true);
             id(led1_output).turn_on();
             id(encoder_stall_timestamp) = millis();
           }
@@ -343,6 +356,8 @@ button:
     id: home
     entity_category: diagnostic
     on_press:
+      - tmc2209.currents:
+          run_current: !lambda return id(stepper_current);
       - stepper.set_speed:
           id: motor
           speed: !lambda return float(id(cover_speed))/1000 * ${steps_per_meter}; # m/s * steps/m = steps/s
@@ -630,6 +645,48 @@ select:
                 id: cover_speed_number
                 value: 40.0
 
+  - platform: template
+    name: "Tilt Profile"
+    id: tilt_profile
+    icon: mdi:speedometer-slow
+    optimistic: true
+    restore_value: true
+    options:
+      - "Silent"
+      - "Slow"
+      - "Normal"
+      - "Fast"
+    initial_option: "Silent"
+    set_action:
+      - if:
+          condition:
+            lambda: 'return x == "Silent";'
+          then:
+            - lambda: |-
+                id(tilt_current) = 1.3;
+                id(tilt_speed) = 4;
+      - if:
+          condition:
+            lambda: 'return x == "Slow";'
+          then:
+            - lambda: |-
+                id(tilt_current) = 1.5;
+                id(tilt_speed) = 10;
+      - if:
+          condition:
+            lambda: 'return x == "Normal";'
+          then:
+            - lambda: |-
+                id(tilt_current) = 1.5;
+                id(tilt_speed) = 20;
+      - if:
+          condition:
+            lambda: 'return x == "Fast";'
+          then:
+            - lambda: |-
+                id(tilt_current) = 1.8;
+                id(tilt_speed) = 40;
+
 cover:
   - platform: template
     id: stepper_cover
@@ -645,9 +702,11 @@ cover:
       return pos;
     tilt_lambda: "return 1.0 - float(id(tilt_steps) + id(tilt_steps_range) / 2) / id(tilt_steps_range);"
     tilt_action:
+      - tmc2209.currents:
+          run_current: !lambda return id(tilt_current);
       - stepper.set_speed:
           id: motor
-          speed: !lambda return float(id(cover_speed))/1000*${steps_per_meter};
+          speed: !lambda return float(id(tilt_speed))/1000*${steps_per_meter};
       - stepper.report_position:
           id: motor
           position: !lambda return float(id(cover_steps) - id(home_steps)) * ${encoder_to_stepper_steps};
@@ -669,6 +728,8 @@ cover:
     stop_action:
       - stepper.stop: motor
     open_action:
+      - tmc2209.currents:
+          run_current: !lambda return id(stepper_current);
       - stepper.set_speed:
           id: motor
           speed: !lambda return float(id(cover_speed))/1000*${steps_per_meter};
@@ -695,6 +756,8 @@ cover:
                   * ${encoder_to_stepper_steps};
 
     close_action:
+      - tmc2209.currents:
+          run_current: !lambda return id(stepper_current);
       - stepper.set_speed:
           id: motor
           speed: !lambda return float(id(cover_speed))/1000*${steps_per_meter};
@@ -719,6 +782,8 @@ cover:
             return (target + cover_mechanical_start - id(backlash_steps) + overshoot_steps) 
                   * ${encoder_to_stepper_steps};
     position_action:
+      - tmc2209.currents:
+          run_current: !lambda return id(stepper_current);
       - stepper.set_speed:
           id: motor
           speed: !lambda return float(id(cover_speed))/1000*${steps_per_meter};
